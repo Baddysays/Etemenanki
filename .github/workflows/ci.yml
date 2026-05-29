@@ -19,7 +19,7 @@ jobs:
           host: windows
           target: desktop
           arch: win64_msvc2022_64
-          modules: qtquickcontrols2 qtpdf qtpdfquick qtshadertools
+          modules: qtquickcontrols2 qtpdf
 
       - name: Configure
         env:
