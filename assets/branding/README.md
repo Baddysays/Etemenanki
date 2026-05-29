@@ -23,4 +23,4 @@ Master: horizontal logo with tagline **«Нет легкого пути от з�
 
 Masters are read from `assets/branding/` or Cursor `assets/etemenanki-brand-*-master.png`.
 
-After rebuild, `cmake --build build --config Release` copies this folder next to `EtemenankiQt.exe`.
+After rebuild, `cmake --build build --config Release` copies this folder next to `Etemenanki.exe`.

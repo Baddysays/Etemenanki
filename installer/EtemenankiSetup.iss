@@ -5,7 +5,7 @@
 #define MyAppVersion "1.0.0"
 #define MyAppPublisher "baddysays"
 #define MyAppURL "https://github.com/Baddysays/Etemenanki"
-#define MyAppExeName "EtemenankiQt.exe"
+#define MyAppExeName "Etemenanki.exe"
 #define BuildDir "..\build\Release"
 #define SetupOut "etemenanki-setup.exe"
 

@@ -20,7 +20,7 @@ and extracts it into this folder.
 2. Extract so that `pdf2zh.exe` is reachable, e.g.:
    - `engines/pdf2zh/pdf2zh.exe`, or
    - `engines/pdf2zh/pdf2zh-v1.9.11-with-assets-win64/pdf2zh.exe`
-3. Rebuild or copy the `engines` folder next to `EtemenankiQt.exe`.
+3. Rebuild or copy the `engines` folder next to `Etemenanki.exe`.
 
 ## Requirements
 

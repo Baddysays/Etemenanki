@@ -43,8 +43,8 @@ jobs:
 
       - name: Portable ZIP
         run: |
-          if (-not (Test-Path "build/Release/EtemenankiQt.exe")) {
-            throw "EtemenankiQt.exe not found after build"
+          if (-not (Test-Path "build/Release/Etemenanki.exe")) {
+            throw "Etemenanki.exe not found after build"
           }
           Compress-Archive -Path "build/Release/*" -DestinationPath "etemenanki-portable.zip" -Force
 

@@ -122,6 +122,9 @@ int main(int argc, char* argv[])
 
     QQuickStyle::setStyle(QStringLiteral("Basic"));
     QGuiApplication app(argc, argv);
+    QGuiApplication::setApplicationName(QStringLiteral("Etemenanki"));
+    QGuiApplication::setOrganizationName(QStringLiteral("baddysays"));
+    QGuiApplication::setApplicationDisplayName(QStringLiteral("Etemenanki"));
     QQmlApplicationEngine engine;
 
     AppSettings appSettings;

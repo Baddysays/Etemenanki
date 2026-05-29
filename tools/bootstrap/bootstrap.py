@@ -149,7 +149,7 @@ def find_app_root() -> Path:
     # tools/bootstrap -> repo or install dir
     cand = ROOT
     for _ in range(4):
-        if (cand / "EtemenankiQt.exe").exists() or (cand / "assets" / "models_catalog.json").exists():
+        if (cand / "Etemenanki.exe").exists() or (cand / "assets" / "models_catalog.json").exists():
             return cand
         if cand.parent == cand:
             break

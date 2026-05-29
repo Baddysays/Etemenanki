@@ -29,4 +29,4 @@ if (-not $exe) {
 }
 
 Write-Host "Done. pdf2zh.exe: $($exe.FullName)"
-Write-Host "Rebuild Etemenanki or copy engines/ next to EtemenankiQt.exe."
+Write-Host "Rebuild Etemenanki or copy engines/ next to Etemenanki.exe."

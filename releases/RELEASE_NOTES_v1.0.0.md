@@ -23,7 +23,7 @@
 | Файл | Для кого |
 |------|----------|
 | **etemenanki-setup.exe** | Обычная установка в `Program Files` |
-| **etemenanki-portable.zip** | Без установщика — распаковать и запустить `EtemenankiQt.exe` |
+| **etemenanki-portable.zip** | Без установщика — распаковать и запустить `Etemenanki.exe` |
 
 Обновления в приложении: **Настройки → Обновления → Проверить обновления** (как в [Saylat](https://github.com/Baddysays/Saylat)).
 

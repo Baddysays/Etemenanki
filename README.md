@@ -67,7 +67,7 @@ pip install -r tools/requirements-pdf.txt
 
 cmake -S . -B build -DCMAKE_PREFIX_PATH="C:\Qt\6.8.0\msvc2022_64"
 cmake --build build --config Release
-.\build\Release\EtemenankiQt.exe
+.\build\Release\Etemenanki.exe
 ```
 
 Установщик (Inno Setup 6): `installer/EtemenankiSetup.iss`
