@@ -14,9 +14,14 @@ __pycache__/
 
 # Packaging / legacy
 dist/
+*.spec
 *.spec.bak
 
-# IDE
+# Dev-only / not for public repo
+review/
+test_sample*.pdf
+src/
+qml/
 .idea/
 .vscode/
 *.swp
