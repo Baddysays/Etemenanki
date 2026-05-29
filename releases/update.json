@@ -1,0 +1,8 @@
+{
+  "version_code": 100,
+  "version_name": "1.0.0",
+  "setup_url": "https://github.com/Baddysays/Etemenanki/releases/latest/download/etemenanki-setup.exe",
+  "portable_url": "https://github.com/Baddysays/Etemenanki/releases/latest/download/etemenanki-portable.zip",
+  "release_notes": "1.0.0: первый релиз — мастер настройки, Ollama, PDF/DOCX, обновления с GitHub.",
+  "mandatory": false
+}

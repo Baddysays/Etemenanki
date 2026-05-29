@@ -1,0 +1,103 @@
+name: Release Windows
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to publish (e.g. v1.0.0)"
+        required: true
+        default: "v1.0.0"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', github.event.inputs.tag) || github.ref }}
+
+      - name: Install Qt 6.8
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.8.0"
+          host: windows
+          target: desktop
+          arch: win64_msvc2022_64
+          modules: qtquickcontrols2 qtpdf qtpdfquick
+
+      - name: Configure and build
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --config Release
+
+      - name: Portable ZIP
+        shell: pwsh
+        run: |
+          $src = "build/Release"
+          Compress-Archive -Path "$src/*" -DestinationPath "etemenanki-portable.zip" -Force
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (Test-Path $iscc) {
+            & $iscc "installer/EtemenankiSetup.iss"
+            Copy-Item "installer/dist/EtemenankiSetup-*.exe" "etemenanki-setup.exe" -Force
+          } else {
+            Write-Warning "Inno Setup not found — shipping portable zip only"
+          }
+
+      - name: Write update.json for this release
+        shell: pwsh
+        env:
+          TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+        run: |
+          $ver = $env:TAG -replace '^v',''
+          $code = [int]($ver -replace '\.','') * 10
+          if ($code -lt 100) { $code = 100 }
+          $notes = "Release $env:TAG — see GitHub release notes."
+          @"
+          {
+            "version_code": $code,
+            "version_name": "$ver",
+            "setup_url": "https://github.com/Baddysays/Etemenanki/releases/download/$env:TAG/etemenanki-setup.exe",
+            "portable_url": "https://github.com/Baddysays/Etemenanki/releases/download/$env:TAG/etemenanki-portable.zip",
+            "release_notes": "$notes",
+            "mandatory": false
+          }
+          "@ | Set-Content -Encoding utf8 releases/update.json
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+          name: Etemenanki ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+          files: |
+            etemenanki-portable.zip
+            etemenanki-setup.exe
+            releases/update.json
+          generate_release_notes: true
+          fail_on_unmatched_files: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Commit update.json to main
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git checkout main
+          git checkout ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', github.event.inputs.tag) || github.ref }} -- releases/update.json
+          git add releases/update.json
+          git diff --staged --quiet || git commit -m "chore: update releases/update.json for ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}"
+          git push origin main

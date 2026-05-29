@@ -1,0 +1,2 @@
+// Application icon embedded into EtemenankiQt.exe (Windows Explorer / taskbar)
+1 ICON "@APP_ICO_NATIVE_PATH@"

@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Вопрос / настройка Ollama
+    url: https://github.com/Baddysays/Etemenanki/discussions/new?category=general
+    about: Установка, модели, первый запуск
+  - name: Идея функции
+    url: https://github.com/Baddysays/Etemenanki/discussions/new?category=ideas
+    about: Предложения по переводу и форматам
+  - name: Сообщить об ошибке
+    url: https://github.com/Baddysays/Etemenanki/issues/new?template=bug_report.md
+    about: Баг в приложении или сборке

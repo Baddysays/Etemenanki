@@ -1,0 +1,11 @@
+#pragma once
+
+#define ETE_PROJECT_SOURCE_DIR "@CMAKE_SOURCE_DIR@"
+
+#cmakedefine01 ETE_HAVE_VENV
+
+#if ETE_HAVE_VENV
+#define ETE_PYTHON_EXECUTABLE "@ETE_PYTHON_EXE@"
+#else
+#define ETE_PYTHON_EXECUTABLE ""
+#endif

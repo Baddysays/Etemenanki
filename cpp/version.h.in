@@ -1,0 +1,4 @@
+#pragma once
+
+#define ETE_VERSION_STRING "@ETE_VERSION@"
+#define ETE_VERSION_CODE @ETE_VERSION_CODE@

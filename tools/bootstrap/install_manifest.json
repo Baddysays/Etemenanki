@@ -1,0 +1,26 @@
+{
+  "github_repo": "Baddysays/Etemenanki",
+  "github_url": "https://github.com/Baddysays/Etemenanki",
+  "releases_url": "https://github.com/Baddysays/Etemenanki/releases",
+  "update_json_url": "https://raw.githubusercontent.com/Baddysays/Etemenanki/main/releases/update.json",
+  "download_setup_name": "etemenanki-setup.exe",
+  "download_portable_name": "etemenanki-portable.zip",
+  "ollama_download_url": "https://ollama.com/download/windows",
+  "author": "baddysays",
+  "contact_email": "hello@baddysays.ru",
+  "telegram": "https://t.me/baddysays",
+  "components": {
+    "pdf2zh": {
+      "script": "tools/setup_pdf2zh.ps1",
+      "required_for": "PDF layout-preserving translation (PDFMathTranslate)"
+    },
+    "python_deps": {
+      "requirements": "tools/requirements-pdf.txt",
+      "required_for": "DOCX/PDF text extraction and export"
+    },
+    "ollama": {
+      "default_url": "http://127.0.0.1:11434",
+      "required_for": "Local AI translation models"
+    }
+  }
+}

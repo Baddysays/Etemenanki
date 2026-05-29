@@ -1,0 +1,37 @@
+# Build
+build/
+build-qt/
+cmake-build-*/
+*.user
+*.autosave
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+.python-version
+
+# Packaging / legacy
+dist/
+*.spec.bak
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+Thumbs.db
+Desktop.ini
+
+# Logs
+*.log
+qml_startup.log
+
+# Large / local artifacts
+Etemenanki-pdf2zh-code-review.zip
+aqtinstall.log
+
+# Optional: keep repo lean (uncomment to track test PDFs)
+# test_sample*.pdf

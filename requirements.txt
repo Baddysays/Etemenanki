@@ -1,0 +1,6 @@
+PySide6
+requests
+psutil
+python-docx
+PyPDF2
+pyinstaller

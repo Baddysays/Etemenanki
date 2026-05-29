@@ -1,0 +1,111 @@
+{
+  "hardware_tiers": {
+    "light": {
+      "max_ram_gb": 11,
+      "max_vram_gb": 3,
+      "label_ru": "Слабый ПК",
+      "label_en": "Light PC"
+    },
+    "balanced": {
+      "max_ram_gb": 23,
+      "max_vram_gb": 9,
+      "label_ru": "Средний ПК",
+      "label_en": "Balanced PC"
+    },
+    "quality": {
+      "label_ru": "Мощный ПК",
+      "label_en": "Powerful PC"
+    }
+  },
+  "models": [
+    {
+      "id": "translategemma:4b",
+      "provider": "ollama",
+      "tier": "light",
+      "translation_quality": 5,
+      "speed_score": 5,
+      "required_ram_gb": 8,
+      "required_vram_gb": 4,
+      "speed_label": "85 ток/с",
+      "quality_label": "Высокое",
+      "description": "Recommended default: fast document translation, best speed/quality balance.",
+      "description_ru": "Рекомендуется по умолчанию: быстрый перевод документов."
+    },
+    {
+      "id": "translategemma:12b",
+      "provider": "ollama",
+      "tier": "quality",
+      "translation_quality": 5,
+      "speed_score": 3,
+      "required_ram_gb": 16,
+      "required_vram_gb": 10,
+      "speed_label": "42 ток/с",
+      "quality_label": "Очень высокое",
+      "description": "Best quality for local translation; needs 16+ GB RAM.",
+      "description_ru": "Максимальное качество локального перевода; нужно 16+ ГБ ОЗУ."
+    },
+    {
+      "id": "qwen2.5:7b",
+      "provider": "ollama",
+      "tier": "balanced",
+      "translation_quality": 4,
+      "speed_score": 4,
+      "required_ram_gb": 10,
+      "required_vram_gb": 6,
+      "speed_label": "60 ток/с",
+      "quality_label": "Высокое",
+      "description": "Strong multilingual alternative if TranslateGemma is unavailable.",
+      "description_ru": "Хорошая многоязычная альтернатива."
+    },
+    {
+      "id": "gemma2:9b",
+      "provider": "ollama",
+      "tier": "balanced",
+      "translation_quality": 4,
+      "speed_score": 3,
+      "required_ram_gb": 12,
+      "required_vram_gb": 8,
+      "speed_label": "45 ток/с",
+      "quality_label": "Высокое",
+      "description": "Used by PDFMathTranslate pipeline; good for PDF-heavy workflows.",
+      "description_ru": "Часто используется в PDFMathTranslate."
+    },
+    {
+      "id": "llama3.1:8b",
+      "provider": "ollama",
+      "tier": "balanced",
+      "translation_quality": 3,
+      "speed_score": 4,
+      "required_ram_gb": 10,
+      "required_vram_gb": 6,
+      "speed_label": "55 ток/с",
+      "quality_label": "Среднее+",
+      "description": "General-purpose; acceptable for plain text documents.",
+      "description_ru": "Универсальная модель для простых текстов."
+    },
+    {
+      "id": "deepseek-chat",
+      "provider": "cloud",
+      "tier": "cloud",
+      "translation_quality": 5,
+      "speed_score": 5,
+      "required_ram_gb": 4,
+      "required_vram_gb": null,
+      "speed_label": "120 ток/с",
+      "quality_label": "Очень высокое",
+      "description": "Cloud model via DeepSeek API, no local GPU required."
+    },
+    {
+      "id": "gpt-4.1-mini",
+      "provider": "cloud",
+      "tier": "cloud",
+      "translation_quality": 5,
+      "speed_score": 4,
+      "required_ram_gb": 4,
+      "required_vram_gb": null,
+      "speed_label": "95 ток/с",
+      "quality_label": "Высокое",
+      "description": "Cloud OpenAI model, strong formatting-aware translation."
+    }
+  ]
+}
