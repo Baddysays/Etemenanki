@@ -32,6 +32,8 @@ qml_startup.log
 # Large / local artifacts
 Etemenanki-pdf2zh-code-review.zip
 aqtinstall.log
+etemenanki-portable.zip
+etemenanki-setup.exe
 
 # Optional: keep repo lean (uncomment to track test PDFs)
 # test_sample*.pdf
