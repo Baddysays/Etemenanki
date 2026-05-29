@@ -17,6 +17,9 @@ permissions:
 jobs:
   release:
     runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
     steps:
       - uses: actions/checkout@v4
         with:
@@ -29,75 +32,75 @@ jobs:
           host: windows
           target: desktop
           arch: win64_msvc2022_64
-          modules: qtquickcontrols2 qtpdf qtpdfquick
+          modules: qtquickcontrols2 qtpdf qtpdfquick qtshadertools
 
       - name: Configure and build
+        env:
+          CMAKE_PREFIX_PATH: ${{ env.QT_ROOT_DIR }}/lib/cmake
         run: |
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
           cmake --build build --config Release
 
       - name: Portable ZIP
-        shell: pwsh
         run: |
-          $src = "build/Release"
-          Compress-Archive -Path "$src/*" -DestinationPath "etemenanki-portable.zip" -Force
+          if (-not (Test-Path "build/Release/EtemenankiQt.exe")) {
+            throw "EtemenankiQt.exe not found after build"
+          }
+          Compress-Archive -Path "build/Release/*" -DestinationPath "etemenanki-portable.zip" -Force
 
       - name: Install Inno Setup
         run: choco install innosetup -y
 
       - name: Build installer
-        shell: pwsh
         run: |
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
           if (Test-Path $iscc) {
             & $iscc "installer/EtemenankiSetup.iss"
-            Copy-Item "installer/dist/EtemenankiSetup-*.exe" "etemenanki-setup.exe" -Force
-          } else {
-            Write-Warning "Inno Setup not found — shipping portable zip only"
+            $built = Get-ChildItem "installer/dist/EtemenankiSetup-*.exe" | Select-Object -First 1
+            if ($built) {
+              Copy-Item $built.FullName "etemenanki-setup.exe" -Force
+            }
+          }
+          if (-not (Test-Path "etemenanki-setup.exe")) {
+            Write-Warning "Installer not built — release will ship portable ZIP only"
           }
 
       - name: Write update.json for this release
-        shell: pwsh
         env:
           TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
         run: |
           $ver = $env:TAG -replace '^v',''
-          $code = [int]($ver -replace '\.','') * 10
-          if ($code -lt 100) { $code = 100 }
-          $notes = "Release $env:TAG — see GitHub release notes."
-          @"
-          {
-            "version_code": $code,
-            "version_name": "$ver",
-            "setup_url": "https://github.com/Baddysays/Etemenanki/releases/download/$env:TAG/etemenanki-setup.exe",
-            "portable_url": "https://github.com/Baddysays/Etemenanki/releases/download/$env:TAG/etemenanki-portable.zip",
-            "release_notes": "$notes",
-            "mandatory": false
+          $parts = $ver.Split('.')
+          $code = 100
+          if ($parts.Count -ge 3) {
+            $code = [int]$parts[0] * 10000 + [int]$parts[1] * 100 + [int]$parts[2]
           }
-          "@ | Set-Content -Encoding utf8 releases/update.json
+          $obj = @{
+            version_code = $code
+            version_name = $ver
+            setup_url = "https://github.com/Baddysays/Etemenanki/releases/download/$env:TAG/etemenanki-setup.exe"
+            portable_url = "https://github.com/Baddysays/Etemenanki/releases/download/$env:TAG/etemenanki-portable.zip"
+            release_notes = "Release $env:TAG — see GitHub release notes."
+            mandatory = $false
+          }
+          $obj | ConvertTo-Json | Set-Content -Encoding utf8 releases/update.json
+
+      - name: Collect release files
+        run: |
+          $files = @("etemenanki-portable.zip", "releases/update.json")
+          if (Test-Path "etemenanki-setup.exe") { $files += "etemenanki-setup.exe" }
+          "RELEASE_FILES=$($files -join ',')" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
           name: Etemenanki ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+          generate_release_notes: true
           files: |
             etemenanki-portable.zip
             etemenanki-setup.exe
             releases/update.json
-          generate_release_notes: true
           fail_on_unmatched_files: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Commit update.json to main
-        shell: pwsh
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git fetch origin main
-          git checkout main
-          git checkout ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', github.event.inputs.tag) || github.ref }} -- releases/update.json
-          git add releases/update.json
-          git diff --staged --quiet || git commit -m "chore: update releases/update.json for ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}"
-          git push origin main
