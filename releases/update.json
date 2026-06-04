@@ -1,8 +1,8 @@
 {
-  "version_code": 103,
-  "version_name": "1.0.3",
-  "setup_url": "https://github.com/Baddysays/Etemenanki/releases/download/v1.0.3/etemenanki-setup.exe",
-  "portable_url": "https://github.com/Baddysays/Etemenanki/releases/download/v1.0.3/etemenanki-portable.zip",
-  "release_notes": "1.0.3: понятная установка VC++, прогресс загрузки модели %, журнал установки.",
+  "version_code": 104,
+  "version_name": "1.0.4",
+  "setup_url": "https://github.com/Baddysays/Etemenanki/releases/download/v1.0.4/EtemenankiSetup-1.0.4.exe",
+  "portable_url": "https://github.com/Baddysays/Etemenanki/releases/download/v1.0.4/etemenanki-portable.zip",
+  "release_notes": "1.0.4: автономный установщик — модель и Python внутри, никаких загрузок после установки.",
   "mandatory": false
 }

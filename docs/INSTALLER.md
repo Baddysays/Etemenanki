@@ -1,66 +1,159 @@
-# Etemenanki installer & first-run bootstrap
+# Etemenanki Installer — Self-Contained Build
 
-## Goal
+## Overview
 
-One installer that:
+Etemenanki uses a **self-contained installer** — everything (model, Python, libraries) is bundled inside the `.exe`. User downloads one file (~1.8 GB), installs in 2 clicks, and everything works immediately.
 
-1. Copies the Qt app + `tools/` + `engines/` + `assets/`
-2. Optionally downloads **pdf2zh** during install (Inno `[Run]` step)
-3. On first launch opens **Setup wizard** (hardware probe, model choice, `ollama pull`)
-4. **Check for updates** via GitHub Releases (Settings → Updates)
+**No post-install downloads required.** Model and Python are pre-downloaded during release preparation.
 
-## Build installer (Windows)
+## Build Steps (Release Preparation)
 
-1. Build Release:
-
-   ```powershell
-   cmake -S . -B build -DCMAKE_PREFIX_PATH="C:\Qt\6.8.0\msvc2022_64"
-   cmake --build build --config Release
-   ```
-
-2. Repo is configured: `Baddysays/Etemenanki` in `tools/bootstrap/install_manifest.json`.
-
-3. Install [Inno Setup 6](https://jrsoftware.org/isinfo.php), open `installer/EtemenankiSetup.iss`, compile.
-
-   Output: `installer/dist/EtemenankiSetup-1.0.1.exe` (script copies to `etemenanki-setup.exe`)
-
-   Or one command: `powershell -ExecutionPolicy Bypass -File scripts/build_installer.ps1`
-
-## One-line install (PowerShell)
+### 1. Build the application
 
 ```powershell
-irm https://raw.githubusercontent.com/Baddysays/Etemenanki/main/scripts/install-etemenanki.ps1 | iex
+cmake -S . -B build -DCMAKE_PREFIX_PATH="C:\Qt\6.8.0\msvc2022_64"
+cmake --build build --config Release
 ```
 
-Or download manually from [Releases](https://github.com/Baddysays/Etemenanki/releases/latest).
+### 2. Prepare release (downloads model + Python)
 
-## First-run wizard (in app)
+```powershell
+.\scripts\prepare_release.ps1
+```
 
-- **Probe** — `tools/bootstrap/bootstrap.py probe` → RAM/VRAM, tier (`light` / `balanced` / `quality`), recommended Ollama models from `assets/models_catalog.json`
-- **Install** — pdf2zh portable, pip deps, `ollama pull` for selected models
+This script:
+- Downloads Python 3.12 embeddable → `build/Release/engines/python/`
+- Installs pip dependencies (PyMuPDF, python-docx, etc.)
+- Downloads embedded LLM model (~1.7 GB) → `build/Release/engines/llm/models/`
+- Sets up `tools/python_path.txt`
 
-User must install **Ollama** separately (link in wizard). Etemenanki does not bundle Ollama (license/size).
+**Time:** ~15-30 minutes depending on internet speed.
 
-## Recommended local models
+### 3. Deploy Qt dependencies
 
-| Tier | PC | Suggested models |
-|------|-----|------------------|
-| light | ≤11 GB RAM or weak GPU | `translategemma:4b` |
-| balanced | 12–23 GB RAM | `translategemma:4b`, `qwen2.5:7b` |
-| quality | 24+ GB RAM, 10+ GB VRAM | `translategemma:12b`, `translategemma:4b` |
+```powershell
+windeployqt build\Release\Etemenanki.exe
+```
 
-Add more entries in `assets/models_catalog.json` (`provider: ollama`, `tier`, `translation_quality`).
+### 4. Compile installer
 
-## GitHub updates
+Open `installer\EtemenankiSetup.iss` in **Inno Setup 6** and compile.
 
-1. Create a release tag `v1.0.1` with asset `EtemenankiSetup-1.0.1.exe`
-2. App: **Settings → Check for updates** uses GitHub API `releases/latest`
-3. Bump `SetupManager::appVersion()` when shipping
+**Output:** `installer\dist\EtemenankiSetup-1.0.4.exe` (~1.8 GB)
 
-## CI (optional)
+Or use the build script:
 
-See `.github/workflows/release.yml` — builds on `windows-latest` with Qt 6.8 (adjust `CMAKE_PREFIX_PATH`).
+```powershell
+.\scripts\build_installer.ps1
+```
 
-## Portable Python (optional)
+## What's Inside the Installer
 
-For fully offline installs, place embeddable Python under `engines/python/` before packaging (see `engines/python/README.md`).
+| Component | Size | Purpose |
+|-----------|------|---------|
+| Etemenanki.exe + Qt DLLs | ~50 MB | Main application |
+| `engines/python/` | ~200 MB | Python 3.12 + libraries |
+| `engines/llm/models/*.gguf` | ~1.7 GB | Built-in AI model |
+| `tools/` | ~5 MB | Python scripts |
+| `assets/`, `releases/` | ~1 MB | Config, OTA updates |
+| **Total** | **~1.8 GB** | **Everything included** |
+
+## User Experience
+
+1. User downloads `EtemenankiSetup-1.0.4.exe` from GitHub Releases
+2. Runs installer → clicks "Next" → "Install" → "Finish"
+3. Launches Etemenanki → sees "Welcome! Everything is ready" → clicks "Start"
+4. Loads document → translates → saves result
+
+**No additional downloads, no configuration, no Ollama needed.**
+
+## Optional: pdf2zh for PDF Layout
+
+The installer offers an optional checkbox to download **pdf2zh** (~200 MB) for layout-preserving PDF translation. This is the only post-install download.
+
+## GitHub Updates (OTA)
+
+1. Create release tag `v1.0.4` with asset `EtemenankiSetup-1.0.4.exe`
+2. Update `releases/update.json`:
+   ```json
+   {
+     "version_code": 104,
+     "version_name": "1.0.4",
+     "setup_url": "https://github.com/Baddysays/Etemenanki/releases/download/v1.0.4/EtemenankiSetup-1.0.4.exe",
+     "release_notes": "Self-contained installer — no post-install downloads"
+   }
+   ```
+3. App: **Settings → Check for updates** notifies user
+
+## CI/CD (GitHub Actions)
+
+See `.github/workflows/release-windows.yml`:
+
+```yaml
+- name: Build Release
+  run: cmake --build build --config Release
+
+- name: Prepare release (download model + Python)
+  run: .\scripts\prepare_release.ps1
+
+- name: Deploy Qt
+  run: windeployqt build\Release\Etemenanki.exe
+
+- name: Build installer
+  run: |
+    & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\EtemenankiSetup.iss
+
+- name: Upload artifact
+  uses: actions/upload-artifact@v4
+  with:
+    name: installer
+    path: installer\dist\EtemenankiSetup-*.exe
+```
+
+## Troubleshooting
+
+### Model download fails in prepare_release.ps1
+
+The script retries 3 times. If all fail:
+- Check internet connection
+- Try manual download: `https://huggingface.co/bartowski/gemma-2-2b-it-GGUF/resolve/main/gemma-2-2b-it-Q4_K_M.gguf`
+- Place file in `build/Release/engines/llm/models/`
+
+### Installer size too large for GitHub Releases
+
+GitHub allows files up to 2 GB. If model grows, consider:
+- Split into `EtemenankiSetup-1.0.4-part1.exe` + `part2.exe`
+- Use GitHub Releases with LFS
+- Host on separate CDN
+
+### User wants Ollama instead of embedded model
+
+Settings → AI Mode → "I already use Ollama" → configure Ollama URL and models.
+
+## File Structure
+
+```
+Etemenanki/
+├── scripts/
+│   ├── prepare_release.ps1      # Downloads model + Python into build/Release
+│   └── build_installer.ps1      # Compiles Inno Setup installer
+├── installer/
+│   └── EtemenankiSetup.iss      # Inno Setup script (self-contained)
+├── tools/
+│   ├── embedded_llm.py          # Commands: status, serve (no download)
+│   ├── install_deps.ps1         # Optional: pdf2zh only
+│   └── setup_pdf2zh.ps1         # Downloads pdf2zh portable
+└── engines/
+    ├── llm/
+    │   ├── manifest.json        # Model config (repo_id, filename, size_mb)
+    │   └── models/              # GGUF model file (bundled by prepare_release.ps1)
+    └── python/                  # Python 3.12 embeddable (bundled by prepare_release.ps1)
+```
+
+## Version History
+
+| Version | Change |
+|---------|--------|
+| 1.0.4 | Self-contained installer — model + Python bundled |
+| 1.0.3 | Post-install model download (unreliable) |
+| 1.0.0 | Initial release |

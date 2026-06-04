@@ -1,10 +1,16 @@
-; Etemenanki Inno Setup Installer
-; Build Release first:  cmake --build build --config Release
-; Run windeployqt:      windeployqt build\Release\Etemenanki.exe
-; Then compile this ISS with Inno Setup 6.
+; Etemenanki Inno Setup Installer — Self-Contained
+; 
+; Build steps:
+;   1. cmake --build build --config Release
+;   2. scripts\prepare_release.ps1          (downloads model + Python into build\Release)
+;   3. windeployqt build\Release\Etemenanki.exe
+;   4. Compile this ISS with Inno Setup 6
+;
+; Result: single .exe installer (~1.8 GB) with everything included.
+; User installs in 2 clicks — no post-install downloads needed.
 
 #define MyAppName "Etemenanki"
-#define MyAppVersion "1.0.3"
+#define MyAppVersion "1.0.4"
 #define MyAppPublisher "baddysays"
 #define MyAppURL "https://github.com/Baddysays/Etemenanki"
 #define MyAppExeName "Etemenanki.exe"
@@ -30,8 +36,7 @@ SolidCompression=yes
 ArchitecturesInstallIn64BitMode=x64
 PrivilegesRequired=admin
 DisableProgramGroupPage=yes
-LicenseFile=
-InfoBeforeFile=
+SetupLogging=yes
 
 [Languages]
 Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
@@ -39,11 +44,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
-Name: "install_python"; Description: "Установить Python 3.12 (встроенный)"; GroupDescription: "Зависимости:"; Flags: checkedonce
-Name: "install_pip_deps"; Description: "Установить Python-библиотеки (PyMuPDF, docx, openpyxl)"; GroupDescription: "Зависимости:"; Flags: checkedonce
-Name: "install_pdf2zh"; Description: "Скачать pdf2zh (PDF с вёрсткой, ~2 ГБ)"; GroupDescription: "Зависимости:"; Flags: unchecked
-Name: "install_ollama_model"; Description: "Установить Ollama и модель translategemma:4b"; GroupDescription: "Зависимости:"; Flags: unchecked
-Name: "install_embedded_model"; Description: "Скачать встроенную модель ИИ (~1,7 ГБ, без Ollama)"; GroupDescription: "Зависимости:"; Flags: checkedonce
+Name: "install_pdf2zh"; Description: "Скачать pdf2zh (PDF с вёрсткой, ~200 МБ, опционально)"; GroupDescription: "Дополнительно:"; Flags: unchecked
 
 [Files]
 Source: "{#BuildDir}\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
@@ -76,56 +77,6 @@ begin
   Result := RegQueryStringValue(HKLM, 'SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\X64', 'Installed', installed) and (installed = '1');
 end;
 
-function PythonAvailable(): Boolean;
-var
-  ResultCode: Integer;
-begin
-  Result := Exec('python', '--version', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0);
-  if not Result then
-    Result := Exec('py', '-3 --version', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0);
-  if not Result then
-    Result := FileExists(ExpandConstant('{app}\engines\python\python.exe'));
-  if not Result then
-    Result := FileExists(ExpandConstant('{app}\.venv\Scripts\python.exe'));
-end;
-
-function OllamaInstalled(): Boolean;
-var
-  ResultCode: Integer;
-begin
-  Result := Exec('ollama', '--version', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0);
-end;
-
-function BuildDepsArgs(): String;
-var
-  args: String;
-begin
-  args := '-NoProfile -ExecutionPolicy Bypass -File "' + ExpandConstant('{app}\tools\install_deps_ui.ps1') + '"';
-  args := args + ' -AppRoot "' + ExpandConstant('{app}') + '"';
-
-  if WizardIsTaskSelected('install_python') then
-    args := args + ' -InstallPython';
-  if WizardIsTaskSelected('install_pip_deps') then
-    args := args + ' -InstallPipDeps';
-  if WizardIsTaskSelected('install_pdf2zh') then
-    args := args + ' -InstallPdf2zh';
-  if WizardIsTaskSelected('install_ollama_model') then
-    args := args + ' -InstallOllama -OllamaModels translategemma:4b';
-  if WizardIsTaskSelected('install_embedded_model') then
-    args := args + ' -InstallEmbeddedModel';
-
-  Result := args;
-end;
-
-function DepsInstallRequested(): Boolean;
-begin
-  Result := WizardIsTaskSelected('install_python') or
-            WizardIsTaskSelected('install_pip_deps') or
-            WizardIsTaskSelected('install_pdf2zh') or
-            WizardIsTaskSelected('install_ollama_model') or
-            WizardIsTaskSelected('install_embedded_model');
-end;
-
 procedure InstallVCRedistIfNeeded();
 var
   ResultCode: Integer;
@@ -134,61 +85,65 @@ var
 begin
   if VCRedistInstalled() then
   begin
-    WizardForm.StatusLabel.Caption := 'Microsoft Visual C++: уже установлен';
+    WizardForm.StatusLabel.Caption := 'Visual C++: уже установлен';
     Exit;
   end;
 
-  WizardForm.StatusLabel.Caption := 'Microsoft Visual C++: загрузка...';
+  WizardForm.StatusLabel.Caption := 'Visual C++: загрузка и установка...';
   WizardForm.Update;
   vcUrl := 'https://aka.ms/vs/17/release/vc_redist.x64.exe';
   vcPath := ExpandConstant('{tmp}\vc_redist.x64.exe');
   if DownloadTemporaryFile(vcUrl, 'vc_redist.x64.exe', '', nil) <= 0 then
   begin
-    MsgBox('Не удалось скачать Visual C++.' + #13#10 +
-           'Установите вручную: ' + vcUrl, mbError, MB_OK);
+    MsgBox('Не удалось скачать Visual C++ Redistributable.' + #13#10 +
+           'Скачайте вручную: ' + vcUrl, mbError, MB_OK);
     Exit;
   end;
 
-  WizardForm.StatusLabel.Caption := 'Microsoft Visual C++: установка (1–2 мин, окно может мигнуть)...';
+  WizardForm.StatusLabel.Caption := 'Visual C++: установка (окно может мигнуть)...';
   WizardForm.Update;
   Exec(vcPath, '/quiet /norestart', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+end;
 
-  if VCRedistInstalled() then
-    MsgBox('Visual C++ установлен успешно.', mbInformation, MB_OK)
-  else
-    MsgBox('Visual C++ не подтверждён. Если программа не запускается, установите вручную:' + #13#10 +
-           vcUrl, mbInformation, MB_OK);
+procedure InstallPdf2zh();
+var
+  ResultCode: Integer;
+  scriptPath: String;
+begin
+  scriptPath := ExpandConstant('{app}\tools\setup_pdf2zh.ps1');
+  if not FileExists(scriptPath) then
+    Exit;
+
+  WizardForm.StatusLabel.Caption := 'Скачивание pdf2zh (~200 МБ)...';
+  WizardForm.Update;
+  Exec('powershell.exe', '-NoProfile -ExecutionPolicy Bypass -File "' + scriptPath + '"',
+       ExpandConstant('{app}'), SW_HIDE, ewWaitUntilTerminated, ResultCode);
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
-var
-  ResultCode: Integer;
-  depsArgs: String;
 begin
   if CurStep = ssPostInstall then
   begin
     InstallVCRedistIfNeeded();
 
-    depsArgs := BuildDepsArgs();
-    if DepsInstallRequested() then
-    begin
-      WizardForm.StatusLabel.Caption := 'Установка Python и модели (~1,7 ГБ). Следите за окном прогресса…';
-      WizardForm.Update;
-      Exec('powershell.exe', depsArgs, ExpandConstant('{app}'), SW_SHOW, ewWaitUntilTerminated, ResultCode);
-      if ResultCode <> 0 then
-      begin
-        MsgBox('Часть компонентов не установилась (часто — не докачалась модель).' + #13#10 +
-               'Запустите Etemenanki → Настройки → «Скачать встроенную модель».' + #13#10 +
-               'Журнал: ' + ExpandConstant('{app}') + '\logs\install-deps.log', mbInformation, MB_OK);
-      end
-      else if WizardIsTaskSelected('install_embedded_model') then
-        MsgBox('Установка завершена. При первом переводе может скачаться движок llama (ещё несколько минут).',
-               mbInformation, MB_OK);
-    end;
+    if WizardIsTaskSelected('install_pdf2zh') then
+      InstallPdf2zh();
+
+    WizardForm.StatusLabel.Caption := 'Готово! Нажмите «Завершить».';
+    WizardForm.Update;
   end;
 end;
 
-procedure InitializeWizard();
+function InitializeSetup(): Boolean;
 begin
-  WizardSelectTasks('install_python install_pip_deps install_embedded_model');
+  if not FileExists(ExpandConstant('{#BuildDir}\{#MyAppExeName}')) then
+  begin
+    MsgBox('Сборка не найдена: {#BuildDir}\{#MyAppExeName}' + #13#10 +
+           'Выполните: cmake --build build --config Release' + #13#10 +
+           'Затем: scripts\prepare_release.ps1' + #13#10 +
+           'Затем: windeployqt build\Release\Etemenanki.exe', mbError, MB_OK);
+    Result := False;
+  end
+  else
+    Result := True;
 end;
