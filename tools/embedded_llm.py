@@ -9,6 +9,7 @@ import os
 import socket
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -80,6 +81,30 @@ def emit_json(obj: dict) -> None:
     sys.stdout.flush()
 
 
+def emit_phase(phase: str) -> None:
+    print(f"ETEMENANKI_PHASE {phase}", flush=True)
+
+
+def emit_progress(percent: int) -> None:
+    pct = max(0, min(100, int(percent)))
+    print(f"ETEMENANKI_PROGRESS {pct}", flush=True)
+
+
+def _watch_download_progress(dest: Path, models_root: Path, expected_bytes: int, stop: threading.Event) -> None:
+    while not stop.wait(1.5):
+        best = 0
+        if dest.is_file():
+            best = dest.stat().st_size
+        if models_root.is_dir():
+            for p in models_root.rglob("*.gguf"):
+                try:
+                    best = max(best, p.stat().st_size)
+                except OSError:
+                    pass
+        if expected_bytes > 0 and best > 0:
+            emit_progress(min(99, int(best * 100 / expected_bytes)))
+
+
 def cmd_status(app_root: Path) -> int:
     manifest = load_manifest(app_root)
     model = default_model(manifest)
@@ -131,13 +156,29 @@ def cmd_download(app_root: Path) -> int:
         print(f"Removing incomplete file ({dest.stat().st_size} bytes)...")
         dest.unlink()
 
+    expected_bytes = int(float(model.get("size_mb", 1500)) * 1024 * 1024)
+    mdir = models_dir(app_root)
     print(f"Downloading {repo_id} / {repo_file} (~{model.get('size_mb', '?')} MB)...", flush=True)
-    cached = hf_hub_download(
-        repo_id=repo_id,
-        filename=repo_file,
-        local_dir=str(models_dir(app_root)),
-        resume_download=True,
+    emit_phase("download")
+    emit_progress(0)
+    stop = threading.Event()
+    watcher = threading.Thread(
+        target=_watch_download_progress,
+        args=(dest, mdir, expected_bytes, stop),
+        daemon=True,
     )
+    watcher.start()
+    try:
+        os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
+        cached = hf_hub_download(
+            repo_id=repo_id,
+            filename=repo_file,
+            local_dir=str(mdir),
+            resume_download=True,
+        )
+    finally:
+        stop.set()
+        watcher.join(timeout=3)
     cached_path = Path(cached)
     if cached_path.resolve() != dest.resolve():
         if dest.exists():
@@ -146,8 +187,32 @@ def cmd_download(app_root: Path) -> int:
     if not dest.is_file() or dest.stat().st_size < min_bytes:
         print("Download incomplete — check internet and retry", file=sys.stderr)
         return 1
+    emit_progress(100)
     print(f"Saved: {dest} ({dest.stat().st_size // (1024 * 1024)} MB)")
+    flag = app_root / "engines" / "llm" / ".install_embedded_mode"
+    flag.parent.mkdir(parents=True, exist_ok=True)
+    flag.write_text("1", encoding="utf-8")
     return 0
+
+
+def cmd_install_embedded(app_root: Path) -> int:
+    """pip huggingface_hub + download GGUF with progress lines for the UI."""
+    emit_phase("pip")
+    emit_progress(0)
+    py = sys.executable
+    req_dl = app_root / "tools" / "requirements-embedded-download.txt"
+    pip_args = [py, "-m", "pip", "install", "--prefer-binary"]
+    if req_dl.is_file():
+        pip_args += ["-r", str(req_dl)]
+    else:
+        pip_args += ["huggingface_hub"]
+    print("Installing huggingface_hub...", flush=True)
+    r = subprocess.run(pip_args, cwd=str(app_root))
+    if r.returncode != 0:
+        print("ERROR: pip install huggingface_hub failed", file=sys.stderr)
+        return r.returncode
+    emit_progress(5)
+    return cmd_download(app_root)
 
 
 def _start_server_process(app_root: Path, model_path: Path, manifest: dict) -> subprocess.Popen | None:
@@ -234,6 +299,7 @@ def main() -> int:
     sub = parser.add_subparsers(dest="cmd", required=True)
     sub.add_parser("status")
     sub.add_parser("download")
+    sub.add_parser("install-embedded")
     sub.add_parser("serve")
     args = parser.parse_args()
     app_root = find_app_root()
@@ -241,6 +307,8 @@ def main() -> int:
         return cmd_status(app_root)
     if args.cmd == "download":
         return cmd_download(app_root)
+    if args.cmd == "install-embedded":
+        return cmd_install_embedded(app_root)
     if args.cmd == "serve":
         return cmd_serve(app_root)
     return 1

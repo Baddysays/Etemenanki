@@ -3,8 +3,8 @@
 ## Одна установка
 
 1. **Скачайте** с [GitHub Releases](https://github.com/Baddysays/Etemenanki/releases/latest):
-   - [`etemenanki-setup.exe`](https://github.com/Baddysays/Etemenanki/releases/download/v1.0.2/etemenanki-setup.exe) — установщик (рекомендуется)
-   - или [`etemenanki-portable.zip`](https://github.com/Baddysays/Etemenanki/releases/download/v1.0.2/etemenanki-portable.zip) — распаковать и запустить `Etemenanki.exe`
+   - [`etemenanki-setup.exe`](https://github.com/Baddysays/Etemenanki/releases/download/v1.0.3/etemenanki-setup.exe) — установщик (рекомендуется)
+   - или [`etemenanki-portable.zip`](https://github.com/Baddysays/Etemenanki/releases/download/v1.0.3/etemenanki-portable.zip) — распаковать и запустить `Etemenanki.exe`
 
 2. **Ollama** (для локального ИИ): [ollama.com/download](https://ollama.com/download/windows)  
    После установки в терминале: `ollama serve` (или из трея).

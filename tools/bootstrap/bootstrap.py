@@ -590,9 +590,9 @@ def cmd_install(args: argparse.Namespace) -> int:
                         cwd=str(app_root),
                     )
                 subprocess.check_call(
-                    [str(py), str(script), "download"],
+                    [str(py), "-u", str(script), "install-embedded"],
                     cwd=str(app_root),
-                    env={**os.environ, "ETEMENANKI_ROOT": str(app_root)},
+                    env={**os.environ, "ETEMENANKI_ROOT": str(app_root), "PYTHONUNBUFFERED": "1"},
                 )
             except subprocess.CalledProcessError:
                 ok = False

@@ -482,6 +482,25 @@ Window {
                                 ? "Запустить Ollama сейчас" : "Start Ollama now"
                             onClicked: setup.ensureOllamaServing()
                         }
+                        Label {
+                            visible: setup.busy && settings.localAiMode === "embedded"
+                            text: setup.statusText
+                            wrapMode: Text.WordWrap
+                            Layout.fillWidth: true
+                            color: pal.accent
+                        }
+                        ProgressBar {
+                            Layout.fillWidth: true
+                            from: 0
+                            to: 100
+                            value: setup.downloadProgress >= 0 ? setup.downloadProgress : 0
+                            visible: setup.busy && setup.downloadProgress >= 0
+                        }
+                        ProgressBar {
+                            Layout.fillWidth: true
+                            indeterminate: true
+                            visible: setup.busy && setup.downloadProgress < 0
+                        }
                         SecondaryBtn {
                             visible: settings.localAiMode === "embedded"
                             text: settings.appUiLanguage === "ru"
@@ -489,6 +508,12 @@ Window {
                                 : "Download built-in model (~1.7 GB)"
                             enabled: !setup.busy
                             onClicked: setup.downloadEmbeddedModel()
+                        }
+                        GhostBtn {
+                            visible: settings.localAiMode === "embedded"
+                            text: settings.appUiLanguage === "ru"
+                                ? "Журнал установки" : "Install log"
+                            onClicked: setup.openInstallLog()
                         }
                         SecondaryBtn {
                             visible: settings.localAiMode === "embedded"

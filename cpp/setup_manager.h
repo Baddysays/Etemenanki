@@ -16,6 +16,7 @@ class SetupManager final : public QObject
     Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
     Q_PROPERTY(QString statusText READ statusText NOTIFY statusTextChanged)
     Q_PROPERTY(QString logText READ logText NOTIFY logTextChanged)
+    Q_PROPERTY(int downloadProgress READ downloadProgress NOTIFY downloadProgressChanged)
     Q_PROPERTY(QVariantMap hardware READ hardware NOTIFY hardwareChanged)
     Q_PROPERTY(QVariantList recommendations READ recommendations NOTIFY recommendationsChanged)
     Q_PROPERTY(QStringList ollamaInstalled READ ollamaInstalled NOTIFY ollamaInstalledChanged)
@@ -34,6 +35,7 @@ public:
     bool busy() const;
     QString statusText() const;
     QString logText() const;
+    int downloadProgress() const;
     QVariantMap hardware() const;
     QVariantList recommendations() const;
     QStringList ollamaInstalled() const;
@@ -62,6 +64,7 @@ public:
     Q_INVOKABLE bool ensureEmbeddedLlmServing();
     Q_INVOKABLE void downloadEmbeddedModel();
     Q_INVOKABLE void openWindowsGpuSettings();
+    Q_INVOKABLE void openInstallLog();
 
     void setSetupComplete(bool value);
 
@@ -70,6 +73,7 @@ signals:
     void busyChanged();
     void statusTextChanged();
     void logTextChanged();
+    void downloadProgressChanged();
     void probeFinished(bool ok);
     void hardwareChanged();
     void recommendationsChanged();
@@ -81,6 +85,8 @@ signals:
 
 private:
     void appendLog(const QString& line);
+    void handleEmbeddedOutputLine(const QString& line);
+    void ingestProcessOutput(const QByteArray& bytes);
     void setBusy(bool value);
     void setStatusText(const QString& text);
     QString bootstrapScriptPath() const;
@@ -98,6 +104,8 @@ private:
     bool m_busy = false;
     QString m_statusText;
     QString m_logText;
+    int m_downloadProgress = -1;
+    QByteArray m_outputBuffer;
     QVariantMap m_hardware;
     QVariantList m_recommendations;
     QStringList m_ollamaInstalled;

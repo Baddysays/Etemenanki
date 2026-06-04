@@ -201,7 +201,7 @@ function Install-EmbeddedLlmModel {
     }
 
     Log "Downloading built-in GGUF model (~1.7 GB) — do not close this window..."
-    & $PyExe $script download 2>&1 | ForEach-Object { Log "  embedded: $_" }
+    & $PyExe -u $script install-embedded 2>&1 | ForEach-Object { Log "  embedded: $_" }
     if ($LASTEXITCODE -eq 0) {
         Log "Built-in model ready"
         $flagFile = Join-Path $AppRoot "engines\llm\.install_embedded_mode"
@@ -281,6 +281,12 @@ if ($InstallEmbeddedModel) {
     if (-not (Install-EmbeddedLlmModel -PyExe $pyExe)) {
         $script:InstallOk = $false
     }
+}
+
+$appLogDir = Join-Path $AppRoot "logs"
+if (Test-Path $AppRoot) {
+    New-Item -ItemType Directory -Force -Path $appLogDir | Out-Null
+    Copy-Item -Path $LogFile -Destination (Join-Path $appLogDir "install-deps.log") -Force -ErrorAction SilentlyContinue
 }
 
 if ($script:InstallOk) {

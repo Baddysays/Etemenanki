@@ -750,17 +750,37 @@ Window {
                         }
                     }
 
+                    Label {
+                        visible: setup.busy
+                        text: setup.statusText
+                        wrapMode: Text.WordWrap
+                        Layout.fillWidth: true
+                        color: pal.accentText
+                        font.weight: Font.DemiBold
+                    }
+                    ProgressBar {
+                        id: dlProgress
+                        Layout.fillWidth: true
+                        from: 0
+                        to: 100
+                        value: setup.downloadProgress >= 0 ? setup.downloadProgress : 0
+                        visible: setup.busy && setup.downloadProgress >= 0
+                    }
                     ProgressBar {
                         Layout.fillWidth: true
                         indeterminate: true
-                        visible: setup.busy
+                        visible: setup.busy && setup.downloadProgress < 0
                     }
                     Label {
-                        visible: setup.busy
-                        text: trRu("Installation in progress — see log below.",
-                                   "Идёт установка — см. журнал ниже.")
-                        color: pal.accentText
+                        visible: setup.busy && setup.downloadProgress >= 0
+                        text: setup.downloadProgress + "%"
+                        color: pal.muted
                         font.pixelSize: pal.fontCaption
+                    }
+                    GhostBtn {
+                        visible: setup.busy || setup.logText.length > 0
+                        text: trRu("Open install log", "Открыть журнал установки")
+                        onClicked: setup.openInstallLog()
                     }
                     ScrollView {
                         Layout.fillWidth: true

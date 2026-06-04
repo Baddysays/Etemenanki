@@ -4,7 +4,7 @@
 ; Then compile this ISS with Inno Setup 6.
 
 #define MyAppName "Etemenanki"
-#define MyAppVersion "1.0.2"
+#define MyAppVersion "1.0.3"
 #define MyAppPublisher "baddysays"
 #define MyAppURL "https://github.com/Baddysays/Etemenanki"
 #define MyAppExeName "Etemenanki.exe"
@@ -126,43 +126,64 @@ begin
             WizardIsTaskSelected('install_embedded_model');
 end;
 
+procedure InstallVCRedistIfNeeded();
+var
+  ResultCode: Integer;
+  vcUrl: String;
+  vcPath: String;
+begin
+  if VCRedistInstalled() then
+  begin
+    WizardForm.StatusLabel.Caption := 'Microsoft Visual C++: уже установлен';
+    Exit;
+  end;
+
+  WizardForm.StatusLabel.Caption := 'Microsoft Visual C++: загрузка...';
+  WizardForm.Update;
+  vcUrl := 'https://aka.ms/vs/17/release/vc_redist.x64.exe';
+  vcPath := ExpandConstant('{tmp}\vc_redist.x64.exe');
+  if DownloadTemporaryFile(vcUrl, 'vc_redist.x64.exe', '', nil) <= 0 then
+  begin
+    MsgBox('Не удалось скачать Visual C++.' + #13#10 +
+           'Установите вручную: ' + vcUrl, mbError, MB_OK);
+    Exit;
+  end;
+
+  WizardForm.StatusLabel.Caption := 'Microsoft Visual C++: установка (1–2 мин, окно может мигнуть)...';
+  WizardForm.Update;
+  Exec(vcPath, '/quiet /norestart', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+
+  if VCRedistInstalled() then
+    MsgBox('Visual C++ установлен успешно.', mbInformation, MB_OK)
+  else
+    MsgBox('Visual C++ не подтверждён. Если программа не запускается, установите вручную:' + #13#10 +
+           vcUrl, mbInformation, MB_OK);
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   ResultCode: Integer;
   depsArgs: String;
-  vcUrl: String;
-  vcPath: String;
 begin
   if CurStep = ssPostInstall then
   begin
-    if not VCRedistInstalled() then
-    begin
-      MsgBox('Для работы Etemenanki необходим Microsoft Visual C++ Redistributable.' + #13#10 +
-             'Нажмите OK чтобы скачать и установить.', mbInformation, MB_OK);
-      vcUrl := 'https://aka.ms/vs/17/release/vc_redist.x64.exe';
-      vcPath := ExpandConstant('{tmp}\vc_redist.x64.exe');
-      if DownloadTemporaryFile(vcUrl, 'vc_redist.x64.exe', '', nil) > 0 then
-      begin
-        Exec(vcPath, '/quiet /norestart', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-      end
-      else
-      begin
-        MsgBox('Не удалось скачать VC++ Redistributable.' + #13#10 +
-               'Скачайте вручную: ' + vcUrl, mbError, MB_OK);
-      end;
-    end;
+    InstallVCRedistIfNeeded();
 
     depsArgs := BuildDepsArgs();
     if DepsInstallRequested() then
     begin
-      WizardForm.StatusLabel.Caption := 'Установка зависимостей (может занять 10–30 мин)...';
+      WizardForm.StatusLabel.Caption := 'Установка Python и модели (~1,7 ГБ). Не закрывайте окно PowerShell!';
+      WizardForm.Update;
       Exec('powershell.exe', depsArgs, ExpandConstant('{app}'), SW_SHOW, ewWaitUntilTerminated, ResultCode);
       if ResultCode <> 0 then
       begin
-        MsgBox('Некоторые зависимости не установлены (модель ~1,7 ГБ могла не докачаться).' + #13#10 +
-               'Откройте Etemenanki → Настройки → «Скачать встроенную модель».' + #13#10 +
-               'Журнал: %TEMP%\Etemenanki-install-deps.log', mbInformation, MB_OK);
-      end;
+        MsgBox('Часть компонентов не установилась (часто — не докачалась модель).' + #13#10 +
+               'Запустите Etemenanki → Настройки → «Скачать встроенную модель».' + #13#10 +
+               'Журнал: ' + ExpandConstant('{app}') + '\logs\install-deps.log', mbInformation, MB_OK);
+      end
+      else if WizardIsTaskSelected('install_embedded_model') then
+        MsgBox('Установка завершена. При первом переводе может скачаться движок llama (ещё несколько минут).',
+               mbInformation, MB_OK);
     end;
   end;
 end;

@@ -71,6 +71,7 @@ bool SetupManager::setupComplete() const { return m_setupComplete; }
 bool SetupManager::busy() const { return m_busy; }
 QString SetupManager::statusText() const { return m_statusText; }
 QString SetupManager::logText() const { return m_logText; }
+int SetupManager::downloadProgress() const { return m_downloadProgress; }
 QVariantMap SetupManager::hardware() const { return m_hardware; }
 QVariantList SetupManager::recommendations() const { return m_recommendations; }
 QStringList SetupManager::ollamaInstalled() const { return m_ollamaInstalled; }
@@ -299,83 +300,61 @@ void SetupManager::downloadEmbeddedModel()
     if (m_busy)
         return;
     const QString script = findFileUpwards(QStringLiteral("tools/embedded_llm.py"));
-    const QString reqFile = findFileUpwards(QStringLiteral("tools/requirements-embedded-download.txt"));
-    const QString reqFallback = findFileUpwards(QStringLiteral("tools/requirements-embedded.txt"));
     const QString py = pythonExecutable();
     if (script.isEmpty() || py.isEmpty()) {
         setStatusText(QStringLiteral("Python or embedded_llm.py not found"));
         return;
     }
 
-    setBusy(true);
-    setStatusText(QStringLiteral("Downloading built-in model (~1.7 GB)…"));
-    appendLog(QStringLiteral("[embedded] Installing Python packages…"));
-
     if (m_process) {
         m_process->deleteLater();
         m_process = nullptr;
     }
 
-    auto* pipProc = new QProcess(this);
-    m_process = pipProc;
+    m_outputBuffer.clear();
+    m_downloadProgress = 0;
+    emit downloadProgressChanged();
+    m_logText.clear();
+    emit logTextChanged();
+    setBusy(true);
+    setStatusText(QStringLiteral("Preparing built-in model download…"));
+
+    m_process = new QProcess(this);
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
     env.insert(QStringLiteral("ETEMENANKI_ROOT"), QCoreApplication::applicationDirPath());
     env.insert(QStringLiteral("PYTHONIOENCODING"), QStringLiteral("utf-8"));
     env.insert(QStringLiteral("PYTHONUTF8"), QStringLiteral("1"));
-    pipProc->setProcessEnvironment(env);
-    pipProc->setProgram(py);
-    const QString req = !reqFile.isEmpty() ? reqFile : reqFallback;
-    if (!req.isEmpty())
-        pipProc->setArguments(
-            {QStringLiteral("-m"), QStringLiteral("pip"), QStringLiteral("install"),
-             QStringLiteral("--prefer-binary"), QStringLiteral("-q"), QStringLiteral("-r"), req});
-    else
-        pipProc->setArguments({QStringLiteral("-m"), QStringLiteral("pip"), QStringLiteral("install"),
-                               QStringLiteral("--prefer-binary"), QStringLiteral("-q"),
-                               QStringLiteral("huggingface_hub")});
+    env.insert(QStringLiteral("PYTHONUNBUFFERED"), QStringLiteral("1"));
+    m_process->setProcessEnvironment(env);
+    m_process->setProgram(py);
+    m_process->setArguments({QStringLiteral("-u"), script, QStringLiteral("install-embedded")});
+    m_process->setProcessChannelMode(QProcess::MergedChannels);
 
-    connect(pipProc, &QProcess::readyReadStandardOutput, this, [this]() {
-        appendLog(QString::fromUtf8(m_process->readAllStandardOutput()));
+    connect(m_process, &QProcess::readyReadStandardOutput, this, [this]() {
+        ingestProcessOutput(m_process->readAllStandardOutput());
     });
-    connect(pipProc, &QProcess::readyReadStandardError, this, [this]() {
-        appendLog(QString::fromUtf8(m_process->readAllStandardError()));
-    });
-    connect(pipProc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
-            [this, script, py, env](int pipCode, QProcess::ExitStatus) {
-                if (pipCode != 0) {
-                    setBusy(false);
-                    setStatusText(QStringLiteral("pip install failed — see log"));
-                    m_process->deleteLater();
-                    m_process = nullptr;
-                    return;
-                }
-                appendLog(QStringLiteral("[embedded] Downloading GGUF…"));
-                auto* dlProc = new QProcess(this);
-                m_process = dlProc;
-                dlProc->setProcessEnvironment(env);
-                dlProc->setProgram(py);
-                dlProc->setArguments({script, QStringLiteral("download")});
-                connect(dlProc, &QProcess::readyReadStandardOutput, this, [this]() {
-                    appendLog(QString::fromUtf8(m_process->readAllStandardOutput()));
-                });
-                connect(dlProc, &QProcess::readyReadStandardError, this, [this]() {
-                    appendLog(QString::fromUtf8(m_process->readAllStandardError()));
-                });
-                connect(dlProc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
-                        [this](int code, QProcess::ExitStatus) {
-                            setBusy(false);
-                            setStatusText(code == 0 ? QStringLiteral("Built-in model ready")
-                                                    : QStringLiteral("Download failed — see log"));
-                            if (m_appSettings)
-                                m_appSettings->refreshAvailableModels();
-                            if (code == 0)
-                                probeHardware();
-                            m_process->deleteLater();
-                            m_process = nullptr;
-                        });
-                dlProc->start();
+    connect(m_process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
+            [this](int code, QProcess::ExitStatus) {
+                ingestProcessOutput(m_process->readAllStandardOutput());
+                m_downloadProgress = -1;
+                emit downloadProgressChanged();
+                setBusy(false);
+                setStatusText(code == 0 ? QStringLiteral("Built-in model ready (100%)")
+                                      : QStringLiteral("Download failed — Settings → open install log"));
+                if (m_appSettings)
+                    m_appSettings->refreshAvailableModels();
+                if (code == 0)
+                    probeHardware();
+                m_process->deleteLater();
+                m_process = nullptr;
             });
-    pipProc->start();
+    m_process->start();
+    if (!m_process->waitForStarted(15000)) {
+        setBusy(false);
+        m_downloadProgress = -1;
+        emit downloadProgressChanged();
+        setStatusText(QStringLiteral("Could not start model download"));
+    }
 }
 
 void SetupManager::openWindowsGpuSettings()
@@ -385,8 +364,66 @@ void SetupManager::openWindowsGpuSettings()
 
 void SetupManager::appendLog(const QString& line)
 {
+    if (line.trimmed().isEmpty())
+        return;
     m_logText += line + QLatin1Char('\n');
     emit logTextChanged();
+}
+
+void SetupManager::handleEmbeddedOutputLine(const QString& line)
+{
+    const QString trimmed = line.trimmed();
+    if (trimmed.startsWith(QStringLiteral("ETEMENANKI_PROGRESS "))) {
+        const int pct = trimmed.mid(20).trimmed().toInt();
+        if (m_downloadProgress != pct) {
+            m_downloadProgress = qBound(0, pct, 100);
+            emit downloadProgressChanged();
+        }
+        setStatusText(QStringLiteral("Downloading built-in model: %1% (~1.7 GB)").arg(m_downloadProgress));
+        return;
+    }
+    if (trimmed.startsWith(QStringLiteral("ETEMENANKI_PHASE "))) {
+        const QString phase = trimmed.mid(17).trimmed();
+        if (phase == QStringLiteral("pip")) {
+            m_downloadProgress = 0;
+            emit downloadProgressChanged();
+            setStatusText(QStringLiteral("Preparing download (Python packages)…"));
+        } else if (phase == QStringLiteral("download")) {
+            setStatusText(QStringLiteral("Downloading built-in model (~1.7 GB)…"));
+        }
+        return;
+    }
+    appendLog(trimmed);
+}
+
+void SetupManager::ingestProcessOutput(const QByteArray& bytes)
+{
+    if (bytes.isEmpty())
+        return;
+    m_outputBuffer += bytes;
+    int idx = -1;
+    while ((idx = m_outputBuffer.indexOf('\n')) >= 0) {
+        const QByteArray lineBytes = m_outputBuffer.left(idx);
+        m_outputBuffer.remove(0, idx + 1);
+        handleEmbeddedOutputLine(QString::fromUtf8(lineBytes).trimmed());
+    }
+}
+
+void SetupManager::openInstallLog()
+{
+    const QString tempLog = QStandardPaths::writableLocation(QStandardPaths::TempLocation)
+                              + QStringLiteral("/Etemenanki-install-deps.log");
+    QStringList candidates = {tempLog};
+    const QString appLog = QCoreApplication::applicationDirPath()
+                           + QStringLiteral("/logs/install-deps.log");
+    candidates << appLog;
+    for (const QString& path : candidates) {
+        if (QFile::exists(path)) {
+            QDesktopServices::openUrl(QUrl::fromLocalFile(path));
+            return;
+        }
+    }
+    setStatusText(QStringLiteral("Install log not found"));
 }
 
 void SetupManager::setBusy(bool value)
