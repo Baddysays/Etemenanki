@@ -85,7 +85,7 @@ void ExternalPdfTranslateWorker::start()
     connect(killer, &QTimer::timeout, this, [this, killer]() {
         if (m_proc && m_proc->state() != QProcess::NotRunning) {
             m_proc->kill();
-            m_cancelled = true;
+            m_cancelled.storeRelaxed(1);
         }
         killer->deleteLater();
     });
@@ -135,7 +135,7 @@ void ExternalPdfTranslateWorker::onProcessFinished(int exitCode, QProcess::ExitS
                                  exitCode, m_proc != nullptr);
 
     ExternalPdfTranslateResult result;
-    if (m_cancelled) {
+    if (m_cancelled.loadRelaxed()) {
         result.error = QStringLiteral("Перевод отменен");
         emit finished(result);
         if (m_proc) {

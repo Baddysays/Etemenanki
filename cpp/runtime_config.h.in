@@ -1,6 +1,6 @@
 #pragma once
 
-#define ETE_PROJECT_SOURCE_DIR "@CMAKE_SOURCE_DIR@"
+#define ETE_PROJECT_SOURCE_DIR "@ETE_PROJECT_SOURCE_DIR@"
 
 #cmakedefine01 ETE_HAVE_VENV
 

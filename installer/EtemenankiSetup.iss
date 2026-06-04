@@ -1,13 +1,14 @@
-; Inno Setup script for Etemenanki (Windows x64)
-; Build Release first, then compile this script with Inno Setup 6.
+; Etemenanki Inno Setup Installer
+; Build Release first:  cmake --build build --config Release
+; Run windeployqt:      windeployqt build\Release\Etemenanki.exe
+; Then compile this ISS with Inno Setup 6.
 
 #define MyAppName "Etemenanki"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.0.1"
 #define MyAppPublisher "baddysays"
 #define MyAppURL "https://github.com/Baddysays/Etemenanki"
 #define MyAppExeName "Etemenanki.exe"
 #define BuildDir "..\build\Release"
-#define SetupOut "etemenanki-setup.exe"
 
 [Setup]
 AppId={{A8F3E2B1-4C5D-6E7F-8A9B-0C1D2E3F4A5B}
@@ -21,43 +22,164 @@ DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 OutputDir=dist
 OutputBaseFilename=EtemenankiSetup-{#MyAppVersion}
-SetupIconFile={#BuildDir}\assets\branding\app.ico
+SetupIconFile=..\assets\branding\app.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 WizardStyle=modern
-WizardImageFile=
-WizardSmallImageFile=
 Compression=lzma2
 SolidCompression=yes
 ArchitecturesInstallIn64BitMode=x64
 PrivilegesRequired=admin
+DisableProgramGroupPage=yes
+LicenseFile=
+InfoBeforeFile=
 
 [Languages]
 Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
-Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
+Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
+Name: "install_python"; Description: "Установить Python 3.12 (встроенный)"; GroupDescription: "Зависимости:"; Flags: checkedonce
+Name: "install_pip_deps"; Description: "Установить Python-библиотеки (PyMuPDF, docx, openpyxl)"; GroupDescription: "Зависимости:"; Flags: checkedonce
+Name: "install_pdf2zh"; Description: "Скачать pdf2zh (PDF с вёрсткой, ~2 ГБ)"; GroupDescription: "Зависимости:"; Flags: unchecked
+Name: "install_ollama_model"; Description: "Установить Ollama и модель translategemma:4b"; GroupDescription: "Зависимости:"; Flags: unchecked
+Name: "install_embedded_model"; Description: "Скачать встроенную модель ИИ (~1,7 ГБ, без Ollama)"; GroupDescription: "Зависимости:"; Flags: checkedonce
 
 [Files]
 Source: "{#BuildDir}\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#BuildDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "*.pdb,*.lib,*.exp"
+Source: "{#BuildDir}\*.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#BuildDir}\assets\*"; DestDir: "{app}\assets"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#BuildDir}\tools\*"; DestDir: "{app}\tools"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#BuildDir}\engines\*"; DestDir: "{app}\engines"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#BuildDir}\releases\*"; DestDir: "{app}\releases"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#BuildDir}\qt*"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#BuildDir}\Etemenanki\*"; DestDir: "{app}\Etemenanki"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist; Excludes: "*.pdb"
+Source: "{#BuildDir}\qml\*"; DestDir: "{app}\qml"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
+Source: "{#BuildDir}\platforms\*"; DestDir: "{app}\platforms"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
+Source: "{#BuildDir}\imageformats\*"; DestDir: "{app}\imageformats"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
+Source: "{#BuildDir}\translations\*"; DestDir: "{app}\translations"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
+Name: "{group}\Удалить {#MyAppName}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppName}}"; Flags: nowait postinstall skipifsilent
-Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\tools\setup_pdf2zh.ps1"""; WorkingDir: "{app}"; StatusMsg: "Downloading PDF engine (pdf2zh)..."; Flags: runhidden waituntilterminated; Check: FileExists(ExpandConstant('{app}\tools\setup_pdf2zh.ps1'))
+Filename: "{app}\{#MyAppExeName}"; Description: "Запустить {#MyAppName}"; Flags: nowait postinstall skipifsilent
 
 [Code]
+
+function VCRedistInstalled(): Boolean;
+var
+  installed: String;
+begin
+  Result := RegQueryStringValue(HKLM, 'SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\X64', 'Installed', installed) and (installed = '1');
+end;
+
+function PythonAvailable(): Boolean;
+var
+  ResultCode: Integer;
+begin
+  Result := Exec('python', '--version', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0);
+  if not Result then
+    Result := Exec('py', '-3 --version', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0);
+  if not Result then
+    Result := FileExists(ExpandConstant('{app}\engines\python\python.exe'));
+  if not Result then
+    Result := FileExists(ExpandConstant('{app}\.venv\Scripts\python.exe'));
+end;
+
+function OllamaInstalled(): Boolean;
+var
+  ResultCode: Integer;
+begin
+  Result := Exec('ollama', '--version', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0);
+end;
+
+function BuildDepsArgs(): String;
+var
+  args: String;
+begin
+  args := '-NoProfile -ExecutionPolicy Bypass -File "' + ExpandConstant('{app}\tools\install_deps.ps1') + '"';
+  args := args + ' -AppRoot "' + ExpandConstant('{app}') + '"';
+
+  if WizardIsTaskSelected('install_python') then
+    args := args + ' -InstallPython';
+  if WizardIsTaskSelected('install_pip_deps') then
+    args := args + ' -InstallPipDeps';
+  if WizardIsTaskSelected('install_pdf2zh') then
+    args := args + ' -InstallPdf2zh';
+  if WizardIsTaskSelected('install_ollama_model') then
+    args := args + ' -InstallOllama -OllamaModels translategemma:4b';
+  if WizardIsTaskSelected('install_embedded_model') then
+    args := args + ' -InstallEmbeddedModel';
+
+  Result := args;
+end;
+
+function DepsInstallRequested(): Boolean;
+begin
+  Result := WizardIsTaskSelected('install_python') or
+            WizardIsTaskSelected('install_pip_deps') or
+            WizardIsTaskSelected('install_pdf2zh') or
+            WizardIsTaskSelected('install_ollama_model') or
+            WizardIsTaskSelected('install_embedded_model');
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  ResultCode: Integer;
+  depsArgs: String;
+  vcUrl: String;
+  vcPath: String;
+begin
+  if CurStep = ssPostInstall then
+  begin
+    if not VCRedistInstalled() then
+    begin
+      MsgBox('Для работы Etemenanki необходим Microsoft Visual C++ Redistributable.' + #13#10 +
+             'Нажмите OK чтобы скачать и установить.', mbInformation, MB_OK);
+      vcUrl := 'https://aka.ms/vs/17/release/vc_redist.x64.exe';
+      vcPath := ExpandConstant('{tmp}\vc_redist.x64.exe');
+      if DownloadTemporaryFile(vcUrl, 'vc_redist.x64.exe', '', nil) > 0 then
+      begin
+        Exec(vcPath, '/quiet /norestart', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+      end
+      else
+      begin
+        MsgBox('Не удалось скачать VC++ Redistributable.' + #13#10 +
+               'Скачайте вручную: ' + vcUrl, mbError, MB_OK);
+      end;
+    end;
+
+    depsArgs := BuildDepsArgs();
+    if DepsInstallRequested() then
+    begin
+      WizardForm.StatusLabel.Caption := 'Установка зависимостей (может занять 10–30 мин)...';
+      Exec('powershell.exe', depsArgs, ExpandConstant('{app}'), SW_SHOW, ewWaitUntilTerminated, ResultCode);
+      if ResultCode <> 0 then
+      begin
+        MsgBox('Некоторые зависимости не установлены.' + #13#10 +
+               'Вы можете повторить установку позже через Мастер настройки в приложении.', mbInformation, MB_OK);
+      end;
+    end;
+  end;
+end;
+
 function InitializeSetup(): Boolean;
 begin
   if not FileExists(ExpandConstant('{#BuildDir}\{#MyAppExeName}')) then
   begin
-    MsgBox('Build not found. Run: cmake --build build --config Release', mbError, MB_OK);
+    MsgBox('Сборка не найдена: {#BuildDir}\{#MyAppExeName}' + #13#10 +
+           'Выполните: cmake --build build --config Release' + #13#10 +
+           'Затем: windeployqt build\Release\Etemenanki.exe', mbError, MB_OK);
     Result := False;
   end
   else
     Result := True;
+end;
+
+procedure InitializeWizard();
+begin
+  WizardSelectTasks('install_python install_pip_deps install_embedded_model');
 end;

@@ -28,6 +28,8 @@ class AppSettings final : public QObject
     Q_PROPERTY(int translateConcurrent READ translateConcurrent WRITE setTranslateConcurrent NOTIFY changed)
     Q_PROPERTY(QString glossaryText READ glossaryText WRITE setGlossaryText NOTIFY changed)
     Q_PROPERTY(bool glossaryEnabled READ glossaryEnabled WRITE setGlossaryEnabled NOTIFY changed)
+    Q_PROPERTY(QString localAiMode READ localAiMode WRITE setLocalAiMode NOTIFY changed)
+    Q_PROPERTY(int preferredGpuIndex READ preferredGpuIndex WRITE setPreferredGpuIndex NOTIFY changed)
 
 public:
     explicit AppSettings(QObject* parent = nullptr);
@@ -50,6 +52,8 @@ public:
     int translateConcurrent() const;
     QString glossaryText() const;
     bool glossaryEnabled() const;
+    QString localAiMode() const;
+    int preferredGpuIndex() const;
 
     Q_INVOKABLE void setAppUiLanguage(const QString& code);
     Q_INVOKABLE void setLanguageEnabled(const QString& code, bool enabled);
@@ -68,6 +72,8 @@ public:
     Q_INVOKABLE void setTranslateConcurrent(int value);
     Q_INVOKABLE void setGlossaryText(const QString& text);
     Q_INVOKABLE void setGlossaryEnabled(bool value);
+    Q_INVOKABLE void setLocalAiMode(const QString& mode);
+    Q_INVOKABLE void setPreferredGpuIndex(int index);
     Q_INVOKABLE QString uiText(const QString& key, const QString& langCode = QString()) const;
     Q_INVOKABLE QVariantList appUiLanguageOptions() const;
     Q_INVOKABLE int appUiLanguageOptionIndex() const;
@@ -110,7 +116,9 @@ private:
     QString m_polyglotPdfUrl = QStringLiteral("http://127.0.0.1:12226");
     QString m_retainPdfUrl = QStringLiteral("http://127.0.0.1:41000");
     QString m_retainPdfApiKey;
-    int m_translateConcurrent = 2;
+    int m_translateConcurrent = 1;
     QString m_glossaryText;
     bool m_glossaryEnabled = false;
+    QString m_localAiMode = QStringLiteral("auto");
+    int m_preferredGpuIndex = -1;
 };

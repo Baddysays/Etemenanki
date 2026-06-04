@@ -22,7 +22,9 @@ One installer that:
 
 3. Install [Inno Setup 6](https://jrsoftware.org/isinfo.php), open `installer/EtemenankiSetup.iss`, compile.
 
-   Output: `installer/dist/EtemenankiSetup-1.0.0.exe` (rename to `etemenanki-setup.exe` for releases)
+   Output: `installer/dist/EtemenankiSetup-1.0.1.exe` (script copies to `etemenanki-setup.exe`)
+
+   Or one command: `powershell -ExecutionPolicy Bypass -File scripts/build_installer.ps1`
 
 ## One-line install (PowerShell)
 

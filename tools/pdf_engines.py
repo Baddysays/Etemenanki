@@ -146,7 +146,9 @@ def normalize_ollama_url(url: str) -> str:
 
 
 def emit(obj: dict) -> None:
-    print(json.dumps(obj, ensure_ascii=False), flush=True)
+    sys.stdout.buffer.write(json.dumps(obj, ensure_ascii=True).encode("utf-8"))
+    sys.stdout.buffer.write(b"\n")
+    sys.stdout.buffer.flush()
 
 
 def find_pdf2zh() -> list[str] | None:

@@ -17,6 +17,10 @@ Window {
 
     property bool helpEn: settings.appUiLanguage !== "ru"
 
+    readonly property string contactEmail: "hello@baddysays.ru"
+    readonly property string contactTelegramUrl: "https://t.me/baddysays"
+    readonly property string contactTelegramLabel: "@baddysays"
+
     function open() {
         show()
         raise()
@@ -119,6 +123,68 @@ Window {
                                 color: pal.text
                                 font.pixelSize: pal.fontCaption
                             }
+                        }
+                    }
+                }
+
+                Rectangle { Layout.fillWidth: true; height: 1; color: pal.border }
+
+                Label {
+                    text: helpEn ? "About the product" : "О продукте"
+                    font.pixelSize: 16
+                    font.weight: Font.Bold
+                    color: pal.text
+                }
+
+                Label {
+                    Layout.fillWidth: true
+                    wrapMode: Text.WordWrap
+                    lineHeight: 1.4
+                    text: helpEn
+                          ? "Etemenanki is developed by baddysays.\nQuestions, feedback and support:"
+                          : "Etemenanki разработано baddysays.\nВопросы, отзывы и поддержка:"
+                    color: pal.text
+                }
+
+                GridLayout {
+                    Layout.fillWidth: true
+                    columns: 2
+                    columnSpacing: 16
+                    rowSpacing: 10
+
+                    Label {
+                        text: helpEn ? "Email" : "Почта"
+                        font.weight: Font.DemiBold
+                        color: pal.muted
+                        font.pixelSize: pal.fontCaption
+                    }
+                    Label {
+                        Layout.fillWidth: true
+                        text: helpWin.contactEmail
+                        color: pal.accentText
+                        font.pixelSize: pal.fontCaption
+                        font.underline: true
+                        TapHandler {
+                            cursorShape: Qt.PointingHandCursor
+                            onTapped: Qt.openUrlExternally("mailto:" + helpWin.contactEmail)
+                        }
+                    }
+
+                    Label {
+                        text: "Telegram"
+                        font.weight: Font.DemiBold
+                        color: pal.muted
+                        font.pixelSize: pal.fontCaption
+                    }
+                    Label {
+                        Layout.fillWidth: true
+                        text: helpWin.contactTelegramLabel
+                        color: pal.accentText
+                        font.pixelSize: pal.fontCaption
+                        font.underline: true
+                        TapHandler {
+                            cursorShape: Qt.PointingHandCursor
+                            onTapped: Qt.openUrlExternally(helpWin.contactTelegramUrl)
                         }
                     }
                 }

@@ -50,6 +50,26 @@ QString catalogPath()
     return candidates.isEmpty() ? QString() : candidates.first();
 }
 
+bool ollamaTagsContainModel(const QByteArray& tagsBody, const QString& modelId)
+{
+    if (modelId.trimmed().isEmpty())
+        return false;
+    const QJsonDocument doc = QJsonDocument::fromJson(tagsBody);
+    for (const QJsonValue& v : doc.object().value(QStringLiteral("models")).toArray()) {
+        const QString name = v.toObject().value(QStringLiteral("name")).toString();
+        if (name.isEmpty())
+            continue;
+        if (name == modelId || name.startsWith(modelId + QLatin1Char(':'))
+            || modelId.startsWith(name + QLatin1Char(':'))) {
+            return true;
+        }
+    }
+    return false;
+}
+
+constexpr int kOllamaChatTimeoutMs = 15 * 60 * 1000;
+constexpr int kCloudChatTimeoutMs = 10 * 60 * 1000;
+
 } // namespace
 
 TranslatorBackend::TranslatorBackend(QObject* parent)
@@ -420,6 +440,11 @@ void TranslatorBackend::setStatus(const QString& text)
     emit statusChanged();
 }
 
+void TranslatorBackend::setStatusMessage(const QString& text)
+{
+    setStatus(text);
+}
+
 void TranslatorBackend::setBusy(bool value)
 {
     if (m_busy == value) return;
@@ -448,7 +473,7 @@ void TranslatorBackend::updateTranslationEta()
         m_estimatedRemainingSec = 0;
     } else {
         const int total = m_chunks.size();
-        const int done = m_currentChunk;
+        const int done = m_completedChunks;
         if (done > 0 && m_translateTimer.isValid()) {
             const qint64 elapsedSec = qMax<qint64>(1, m_translateTimer.elapsed() / 1000);
             const int avgPerChunk = qMax(1, static_cast<int>(elapsedSec / done));
@@ -487,13 +512,17 @@ QString TranslatorBackend::normalizeLocalFilePath(const QString& path)
 void TranslatorBackend::setAppSettings(AppSettings* settings)
 {
     m_appSettings = settings;
+    if (!settings)
+        return;
+    refreshHardware();
+    if (!m_model.isEmpty())
+        updateModelInfo(m_model);
 }
 
 QString TranslatorBackend::uiTr(const QString& key) const
 {
-    if (m_appSettings)
-        return m_appSettings->uiText(key, m_appSettings->appUiLanguage());
-    return key;
+    const QString lang = m_appSettings ? m_appSettings->appUiLanguage() : QStringLiteral("ru");
+    return AppUiStrings::text(key, lang);
 }
 
 QString TranslatorBackend::uiTrArgs(const QString& key, const QStringList& args) const
@@ -1234,16 +1263,40 @@ void TranslatorBackend::startTranslate(const QString& runtime,
     m_pendingBaseUrl = baseUrl;
     m_pendingApiKey = apiKey;
 
+    if (runtime == QStringLiteral("embedded")) {
+        m_pendingBaseUrl = QStringLiteral("http://127.0.0.1:11435/v1");
+        m_pendingApiKey.clear();
+        setStatus(uiTr(QStringLiteral("status_check_embedded")));
+        QNetworkRequest pingReq(QUrl(m_pendingBaseUrl + QStringLiteral("/models")));
+        pingReq.setTransferTimeout(4000);
+        QNetworkReply* pingReply = m_net.get(pingReq);
+        connect(pingReply, &QNetworkReply::finished, this, [this, pingReply]() {
+            const bool up = pingReply->error() == QNetworkReply::NoError;
+            pingReply->deleteLater();
+            if (!up) {
+                setStatus(uiTr(QStringLiteral("status_start_embedded")));
+                return;
+            }
+            proceedWithTranslate();
+        });
+        return;
+    }
+
     if (runtime == QStringLiteral("local")) {
         setStatus(uiTr(QStringLiteral("status_check_ollama")));
         QNetworkRequest pingReq(QUrl(ollamaApiUrl(QStringLiteral("/api/tags"))));
         pingReq.setTransferTimeout(4000);
         QNetworkReply* pingReply = m_net.get(pingReq);
-        connect(pingReply, &QNetworkReply::finished, this, [this, pingReply]() {
+        connect(pingReply, &QNetworkReply::finished, this, [this, pingReply, model]() {
+            const QByteArray tagsBody = pingReply->readAll();
             const bool ollamaUp = pingReply->error() == QNetworkReply::NoError;
             pingReply->deleteLater();
             if (!ollamaUp) {
                 setStatus(uiTr(QStringLiteral("status_start_ollama")));
+                return;
+            }
+            if (!ollamaTagsContainModel(tagsBody, model)) {
+                setStatus(uiTrArgs(QStringLiteral("status_ollama_model_missing"), {model}));
                 return;
             }
             proceedWithTranslate();
@@ -1525,8 +1578,15 @@ void TranslatorBackend::finishTranslation()
     updateTranslationEta();
     if (m_etaTimer)
         m_etaTimer->stop();
-    setStatus(uiTrArgs(QStringLiteral("status_translate_done_pages"),
-                       {QString::number(m_translatedPages.size())}));
+    const bool hasAnyText =
+        !m_translatedText.trimmed().isEmpty()
+        || std::any_of(m_translatedChunks.cbegin(), m_translatedChunks.cend(),
+                       [](const QString& s) { return !s.trimmed().isEmpty(); });
+    if (!hasAnyText && m_runtime == QStringLiteral("local"))
+        setStatus(uiTr(QStringLiteral("status_ollama_empty_reply")));
+    else
+        setStatus(uiTrArgs(QStringLiteral("status_translate_done_pages"),
+                           {QString::number(m_translatedPages.size())}));
     setBusy(false);
     m_activeReplies.clear();
 }
@@ -1536,8 +1596,11 @@ void TranslatorBackend::dispatchTranslationChunks()
     if (m_cancelled)
         return;
 
-    const int maxConcurrent =
+    int maxConcurrent =
         m_appSettings ? qBound(1, m_appSettings->translateConcurrent(), 6) : 1;
+    // Ollama loads one model into VRAM; parallel /api/chat calls stall during load.
+    if (m_runtime == QStringLiteral("local") || m_runtime == QStringLiteral("embedded"))
+        maxConcurrent = 1;
 
     while (m_inFlight < maxConcurrent && m_nextDispatchIndex < m_chunks.size()) {
         while (m_nextDispatchIndex < m_chunks.size()
@@ -1583,7 +1646,8 @@ void TranslatorBackend::startChunkAt(int chunkIndex)
                         {QStringLiteral("content"), prompt}}};
     } else {
         url = QUrl(m_baseUrl + QStringLiteral("/chat/completions"));
-        req.setRawHeader("Authorization", QByteArray("Bearer ") + m_apiKey.toUtf8());
+        if (!m_apiKey.trimmed().isEmpty())
+            req.setRawHeader("Authorization", QByteArray("Bearer ") + m_apiKey.toUtf8());
         payload[QStringLiteral("model")] = m_model;
         payload[QStringLiteral("temperature")] = 0.2;
         payload[QStringLiteral("messages")] = QJsonArray{
@@ -1592,6 +1656,17 @@ void TranslatorBackend::startChunkAt(int chunkIndex)
     }
     req.setUrl(url);
     req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
+    const int timeoutMs = m_runtime == QStringLiteral("local") ? kOllamaChatTimeoutMs
+                        : (m_runtime == QStringLiteral("embedded") ? kOllamaChatTimeoutMs
+                                                                   : kCloudChatTimeoutMs);
+    req.setTransferTimeout(timeoutMs);
+
+    if (m_completedChunks == 0 && m_inFlight == 0) {
+        if (m_runtime == QStringLiteral("local"))
+            setStatus(uiTrArgs(QStringLiteral("status_ollama_loading_model"), {m_model}));
+        else if (m_runtime == QStringLiteral("embedded"))
+            setStatus(uiTrArgs(QStringLiteral("status_embedded_loading_model"), {m_model}));
+    }
 
     QNetworkReply* reply = m_net.post(req, QJsonDocument(payload).toJson(QJsonDocument::Compact));
     m_activeReplies << reply;
@@ -1614,7 +1689,12 @@ void TranslatorBackend::startChunkAt(int chunkIndex)
                 --m_inFlight;
 
                 if (err != QNetworkReply::NoError) {
-                    setStatus(uiTrArgs(QStringLiteral("status_network_error"), {errText}));
+                    if (err == QNetworkReply::TimeoutError) {
+                        setStatus(uiTrArgs(QStringLiteral("status_ollama_request_timeout"),
+                                           {m_model}));
+                    } else {
+                        setStatus(uiTrArgs(QStringLiteral("status_network_error"), {errText}));
+                    }
                     setBusy(false);
                     m_activeReplies.clear();
                     return;
@@ -1638,6 +1718,12 @@ void TranslatorBackend::startChunkAt(int chunkIndex)
                                      .value(QStringLiteral("content"))
                                      .toString()
                                      .trimmed();
+                }
+
+                if (translated.isEmpty()) {
+                    setStatus(uiTr(m_runtime == QStringLiteral("embedded")
+                                       ? QStringLiteral("status_embedded_empty_reply")
+                                       : QStringLiteral("status_ollama_empty_reply")));
                 }
 
                 handleChunkFinished(chunkIndex, translated, layoutChunk, structuredChunk, segmentChunk);

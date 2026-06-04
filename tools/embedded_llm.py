@@ -1,0 +1,223 @@
+#!/usr/bin/env python3
+"""Built-in local LLM (llama.cpp server) — no Ollama required."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import socket
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+
+
+def find_app_root() -> Path:
+    env = os.environ.get("ETEMENANKI_ROOT")
+    if env:
+        return Path(env)
+    cand = ROOT
+    for _ in range(6):
+        if (cand / "assets" / "models_catalog.json").exists():
+            return cand
+        if (cand / "Etemenanki.exe").exists():
+            return cand
+        if cand.parent == cand:
+            break
+        cand = cand.parent
+    return ROOT
+
+
+def manifest_path(app_root: Path) -> Path:
+    return app_root / "engines" / "llm" / "manifest.json"
+
+
+def models_dir(app_root: Path) -> Path:
+    return app_root / "engines" / "llm" / "models"
+
+
+def load_manifest(app_root: Path) -> dict:
+    path = manifest_path(app_root)
+    if not path.exists():
+        return {"models": [], "server_port": 11435, "server_host": "127.0.0.1"}
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def default_model(manifest: dict) -> dict | None:
+    models = manifest.get("models") or []
+    if not models:
+        return None
+    default_id = manifest.get("default_model_id")
+    for m in models:
+        if m.get("id") == default_id:
+            return m
+    return models[0]
+
+
+def model_gguf_path(app_root: Path, model: dict) -> Path:
+    return models_dir(app_root) / str(model.get("filename", ""))
+
+
+def server_url(manifest: dict) -> str:
+    host = manifest.get("server_host", "127.0.0.1")
+    port = int(manifest.get("server_port", 11435))
+    return f"http://{host}:{port}"
+
+
+def port_open(host: str, port: int, timeout: float = 1.5) -> bool:
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+def emit_json(obj: dict) -> None:
+    sys.stdout.write(json.dumps(obj, ensure_ascii=False) + "\n")
+    sys.stdout.flush()
+
+
+def cmd_status(app_root: Path) -> int:
+    manifest = load_manifest(app_root)
+    model = default_model(manifest)
+    if not model:
+        emit_json({"ready": False, "server_up": False, "error": "no manifest model"})
+        return 1
+    path = model_gguf_path(app_root, model)
+    host = manifest.get("server_host", "127.0.0.1")
+    port = int(manifest.get("server_port", 11435))
+    emit_json(
+        {
+            "ready": path.is_file(),
+            "server_up": port_open(host, port),
+            "model_id": model.get("id"),
+            "model_path": str(path),
+            "server_url": server_url(manifest),
+            "size_mb": model.get("size_mb"),
+        }
+    )
+    return 0
+
+
+def cmd_download(app_root: Path) -> int:
+    manifest = load_manifest(app_root)
+    model = default_model(manifest)
+    if not model:
+        print("No embedded model in manifest", file=sys.stderr)
+        return 1
+    dest = model_gguf_path(app_root, model)
+    if dest.is_file():
+        print(f"Already downloaded: {dest}")
+        return 0
+    models_dir(app_root).mkdir(parents=True, exist_ok=True)
+    try:
+        from huggingface_hub import hf_hub_download
+    except ImportError:
+        print("Install: pip install huggingface_hub llama-cpp-python", file=sys.stderr)
+        return 2
+    repo_id = model.get("repo_id")
+    repo_file = model.get("repo_file") or model.get("filename")
+    if not repo_id or not repo_file:
+        print("Manifest missing repo_id/repo_file", file=sys.stderr)
+        return 1
+    print(f"Downloading {repo_id} / {repo_file} (~{model.get('size_mb', '?')} MB)...")
+    cached = hf_hub_download(repo_id=repo_id, filename=repo_file, local_dir=models_dir(app_root))
+    cached_path = Path(cached)
+    if cached_path.resolve() != dest.resolve():
+        if dest.exists():
+            dest.unlink()
+        cached_path.replace(dest)
+    print(f"Saved: {dest}")
+    return 0 if dest.is_file() else 1
+
+
+def _start_server_process(app_root: Path, model_path: Path, manifest: dict) -> subprocess.Popen | None:
+    model = default_model(manifest) or {}
+    n_ctx = int(model.get("n_ctx", 4096))
+    n_gpu = int(model.get("n_gpu_layers", -1))
+    host = manifest.get("server_host", "127.0.0.1")
+    port = int(manifest.get("server_port", 11435))
+    args = [
+        sys.executable,
+        "-m",
+        "llama_cpp.server",
+        "--model",
+        str(model_path),
+        "--host",
+        host,
+        "--port",
+        str(port),
+        "--n_ctx",
+        str(n_ctx),
+        "--n_gpu_layers",
+        str(n_gpu),
+    ]
+    creationflags = 0
+    if sys.platform == "win32":
+        creationflags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+    return subprocess.Popen(
+        args,
+        cwd=str(app_root),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        creationflags=creationflags,
+    )
+
+
+def cmd_serve(app_root: Path) -> int:
+    manifest = load_manifest(app_root)
+    model = default_model(manifest)
+    if not model:
+        print("No embedded model configured", file=sys.stderr)
+        return 1
+    path = model_gguf_path(app_root, model)
+    if not path.is_file():
+        print(f"Model not found: {path}\nRun: python tools/embedded_llm.py download", file=sys.stderr)
+        return 3
+    try:
+        import llama_cpp  # noqa: F401
+    except ImportError:
+        print("Install: pip install llama-cpp-python", file=sys.stderr)
+        return 2
+
+    host = manifest.get("server_host", "127.0.0.1")
+    port = int(manifest.get("server_port", 11435))
+    if port_open(host, port):
+        print(f"Built-in AI already running on {server_url(manifest)}")
+        return 0
+
+    _start_server_process(app_root, path, manifest)
+    for _ in range(45):
+        time.sleep(2)
+        if port_open(host, port):
+            print(f"Built-in AI ready at {server_url(manifest)}")
+            return 0
+    print(
+        f"Server did not start on port {port}. Check VRAM/RAM or reinstall llama-cpp-python.",
+        file=sys.stderr,
+    )
+    return 4
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Etemenanki built-in LLM")
+    sub = parser.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("status")
+    sub.add_parser("download")
+    sub.add_parser("serve")
+    args = parser.parse_args()
+    app_root = find_app_root()
+    if args.cmd == "status":
+        return cmd_status(app_root)
+    if args.cmd == "download":
+        return cmd_download(app_root)
+    if args.cmd == "serve":
+        return cmd_serve(app_root)
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

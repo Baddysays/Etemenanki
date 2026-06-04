@@ -15,8 +15,6 @@ ApplicationWindow {
     visible: true
     title: "Etemenanki — " + tr("subtitle")
     color: pal.bg
-    font.family: "Segoe UI"
-    font.pixelSize: pal.fontBody
 
     property string runtime: "local"
     property int elapsedSec: 0
@@ -24,6 +22,10 @@ ApplicationWindow {
 
     function tr(key) {
         return settings.uiText(key, settings.appUiLanguage)
+    }
+
+    function trRu(en, ru) {
+        return settings.appUiLanguage === "ru" ? ru : en
     }
 
     onResultViewModeChanged: {
@@ -117,11 +119,12 @@ ApplicationWindow {
         if (!name) return "—"
         const dot = name.lastIndexOf(".")
         const base = dot < 0 ? name : name.substring(0, dot)
+        const suffix = "_" + (typeof dstLangCode !== "undefined" ? dstLangCode : "ru")
         if (backend.isPdf && backend.hasTranslatedPdf)
-            return base + "_ru.pdf"
+            return base + suffix + ".pdf"
         if (dot < 0)
-            return base + "_ru.txt"
-        return base + "_ru" + name.substring(dot)
+            return base + suffix + ".txt"
+        return base + suffix + name.substring(dot)
     }
 
     function sourceFormatLabel() {
@@ -801,15 +804,45 @@ ApplicationWindow {
                     onClicked: openDialog.open()
                 }
                 PrimaryButton {
+                    id: translateBtn
                     text: tr("translate")
                     enabled: !backend.busy
-                             && ((runtime === "local" && settings.localRuntimeAvailable)
+                             && (((runtime === "local" || settings.localAiMode === "embedded")
+                                  && settings.localRuntimeAvailable)
                                  || (runtime === "cloud" && settings.cloudRuntimeAvailable))
-                    onClicked: backend.startTranslate(
-                        runtime,
-                        activeModelId(),
-                        srcLangCode,
-                        dstLangCode)
+                    ToolTip.visible: !enabled && hovered
+                    ToolTip.text: {
+                        if (backend.busy)
+                            return backend.status
+                        if (runtime === "local" && !settings.localRuntimeAvailable)
+                            return trRu("No local models — install Ollama, run ollama serve, then Settings → Refresh list",
+                                        "Нет локальных моделей — установите Ollama, ollama serve, Настройки → Обновить список")
+                        if (runtime === "cloud" && !settings.cloudRuntimeAvailable)
+                            return trRu("Cloud: add API key in Settings",
+                                        "Облако: укажите API-ключ в Настройках")
+                        return ""
+                    }
+                    onClicked: {
+                        const mid = root.activeModelId()
+                        if (!mid || mid.length === 0) {
+                            backend.setStatusMessage(trRu(
+                                "Select a model in the list above",
+                                "Выберите модель в списке выше"))
+                            return
+                        }
+                        if (backend.sourceText.length === 0 && backend.fileName.length === 0) {
+                            backend.setStatusMessage(trRu(
+                                "Load a document first (Upload file)",
+                                "Сначала загрузите документ (Загрузить файл)"))
+                            return
+                        }
+                        const trt = settings.localAiMode === "embedded" ? "embedded" : runtime
+                        if (trt === "embedded")
+                            setup.ensureEmbeddedLlmServing()
+                        else if (runtime === "local" && settings.localAiMode !== "ollama")
+                            setup.ensureOllamaServing()
+                        backend.startTranslate(trt, mid, srcLangCode, dstLangCode)
+                    }
                 }
                 OutlineButton {
                     text: tr("save")
@@ -1100,6 +1133,7 @@ ApplicationWindow {
     }
 
     Component.onCompleted: {
+        settings.refreshAvailableModels()
         syncRuntimeFromModels()
         if (!setup.setupComplete)
             setupWizard.show()

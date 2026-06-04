@@ -16,6 +16,7 @@
 #include <QSettings>
 #include <QStandardPaths>
 #include <QUrl>
+#include <QTcpSocket>
 
 namespace {
 
@@ -72,6 +73,9 @@ QString SetupManager::statusText() const { return m_statusText; }
 QString SetupManager::logText() const { return m_logText; }
 QVariantMap SetupManager::hardware() const { return m_hardware; }
 QVariantList SetupManager::recommendations() const { return m_recommendations; }
+QStringList SetupManager::ollamaInstalled() const { return m_ollamaInstalled; }
+QVariantMap SetupManager::depsStatus() const { return m_depsStatus; }
+bool SetupManager::probeReady() const { return m_probeReady; }
 QVariantMap SetupManager::updateInfo() const { return m_updateInfo; }
 
 QString SetupManager::appVersion() const
@@ -117,6 +121,264 @@ void SetupManager::markSetupComplete()
         m_appSettings->refreshAvailableModels();
 }
 
+namespace {
+
+QString findOllamaExecutable()
+{
+    const QString fromPath = QStandardPaths::findExecutable(QStringLiteral("ollama"));
+    if (!fromPath.isEmpty())
+        return fromPath;
+    const QString localAppData =
+        QStandardPaths::writableLocation(QStandardPaths::HomeLocation)
+        + QStringLiteral("/AppData/Local/Programs/Ollama/ollama.exe");
+    if (QFile::exists(localAppData))
+        return localAppData;
+    return {};
+}
+
+bool tcpPortOpen(const QString& baseUrl, quint16 defaultPort)
+{
+    const QUrl url(baseUrl);
+    const QString host = url.host().isEmpty() ? QStringLiteral("127.0.0.1") : url.host();
+    const quint16 port =
+        url.port() > 0 ? static_cast<quint16>(url.port()) : defaultPort;
+
+    QTcpSocket socket;
+    socket.connectToHost(host, port);
+    if (!socket.waitForConnected(1500))
+        return false;
+    socket.disconnectFromHost();
+    return true;
+}
+
+bool ollamaPortOpen(const QString& baseUrl)
+{
+    return tcpPortOpen(baseUrl, 11434);
+}
+
+QString embeddedServerBaseUrl()
+{
+    const QString manifestPath = findFileUpwards(QStringLiteral("engines/llm/manifest.json"));
+    if (manifestPath.isEmpty())
+        return QStringLiteral("http://127.0.0.1:11435");
+    QFile f(manifestPath);
+    if (!f.open(QIODevice::ReadOnly))
+        return QStringLiteral("http://127.0.0.1:11435");
+    const QJsonObject obj = QJsonDocument::fromJson(f.readAll()).object();
+    const QString host = obj.value(QStringLiteral("server_host")).toString(QStringLiteral("127.0.0.1"));
+    const int port = obj.value(QStringLiteral("server_port")).toInt(11435);
+    return QStringLiteral("http://%1:%2").arg(host).arg(port);
+}
+
+bool embeddedPortOpen()
+{
+    return tcpPortOpen(embeddedServerBaseUrl(), 11435);
+}
+
+} // namespace
+
+bool SetupManager::ensureOllamaServing()
+{
+    if (!m_appSettings)
+        return false;
+
+    const QString mode = m_appSettings->localAiMode();
+    if (mode == QStringLiteral("embedded"))
+        return ensureEmbeddedLlmServing();
+
+    const QString baseUrl = m_appSettings->ollamaBaseUrl();
+    if (ollamaPortOpen(baseUrl)) {
+        setStatusText(QStringLiteral("Ollama is running"));
+        return true;
+    }
+
+    if (mode == QStringLiteral("ollama")) {
+        setStatusText(QStringLiteral("Start Ollama: ollama serve"));
+        return false;
+    }
+
+    const QString script = findFileUpwards(QStringLiteral("tools/start_ollama.ps1"));
+    if (script.isEmpty()) {
+        setStatusText(QStringLiteral("Ollama is not running — install from ollama.com"));
+        return false;
+    }
+
+    setStatusText(QStringLiteral("Starting Ollama…"));
+
+    QProcess proc;
+    proc.setProgram(QStringLiteral("powershell"));
+    proc.setArguments({
+        QStringLiteral("-NoProfile"),
+        QStringLiteral("-ExecutionPolicy"),
+        QStringLiteral("Bypass"),
+        QStringLiteral("-File"),
+        script,
+        QStringLiteral("-GpuIndex"),
+        QString::number(m_appSettings->preferredGpuIndex()),
+        QStringLiteral("-OllamaUrl"),
+        baseUrl,
+    });
+    proc.setProcessChannelMode(QProcess::MergedChannels);
+    proc.start();
+    if (!proc.waitForStarted(10000)) {
+        setStatusText(QStringLiteral("Could not start Ollama helper script"));
+        return false;
+    }
+    if (!proc.waitForFinished(90000)) {
+        proc.kill();
+        setStatusText(QStringLiteral("Ollama start timed out — open ollama.com and install"));
+        return false;
+    }
+
+    if (ollamaPortOpen(baseUrl)) {
+        setStatusText(QStringLiteral("Ollama started"));
+        if (m_appSettings)
+            m_appSettings->refreshAvailableModels();
+        return true;
+    }
+
+    const QString out = QString::fromUtf8(proc.readAllStandardOutput()).trimmed();
+    setStatusText(out.isEmpty() ? QStringLiteral("Ollama did not start — check GPU settings")
+                                : out.left(200));
+    return false;
+}
+
+bool SetupManager::ensureEmbeddedLlmServing()
+{
+    if (embeddedPortOpen()) {
+        setStatusText(QStringLiteral("Built-in AI is running"));
+        if (m_appSettings)
+            m_appSettings->refreshAvailableModels();
+        return true;
+    }
+
+    const QString script = findFileUpwards(QStringLiteral("tools/embedded_llm.py"));
+    const QString py = pythonExecutable();
+    if (script.isEmpty() || py.isEmpty()) {
+        setStatusText(QStringLiteral("Built-in AI: Python or embedded_llm.py not found"));
+        return false;
+    }
+
+    setStatusText(QStringLiteral("Starting built-in AI…"));
+
+    QProcess proc;
+    proc.setProgram(py);
+    proc.setArguments({QDir::toNativeSeparators(script), QStringLiteral("serve")});
+    proc.setProcessChannelMode(QProcess::MergedChannels);
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    env.insert(QStringLiteral("ETEMENANKI_ROOT"), QCoreApplication::applicationDirPath());
+    env.insert(QStringLiteral("PYTHONIOENCODING"), QStringLiteral("utf-8"));
+    env.insert(QStringLiteral("PYTHONUTF8"), QStringLiteral("1"));
+    proc.setProcessEnvironment(env);
+    proc.start();
+    if (!proc.waitForStarted(10000)) {
+        setStatusText(QStringLiteral("Could not start built-in AI"));
+        return false;
+    }
+    if (!proc.waitForFinished(120000)) {
+        proc.kill();
+        setStatusText(QStringLiteral("Built-in AI start timed out — download the model in Settings"));
+        return false;
+    }
+
+    if (embeddedPortOpen()) {
+        setStatusText(QStringLiteral("Built-in AI started"));
+        if (m_appSettings)
+            m_appSettings->refreshAvailableModels();
+        return true;
+    }
+
+    const QString out = QString::fromUtf8(proc.readAllStandardOutput()).trimmed();
+    setStatusText(out.isEmpty() ? QStringLiteral("Built-in AI did not start — download model first")
+                                : out.left(240));
+    return false;
+}
+
+void SetupManager::downloadEmbeddedModel()
+{
+    if (m_busy)
+        return;
+    const QString script = findFileUpwards(QStringLiteral("tools/embedded_llm.py"));
+    const QString reqFile = findFileUpwards(QStringLiteral("tools/requirements-embedded.txt"));
+    const QString py = pythonExecutable();
+    if (script.isEmpty() || py.isEmpty()) {
+        setStatusText(QStringLiteral("Python or embedded_llm.py not found"));
+        return;
+    }
+
+    setBusy(true);
+    setStatusText(QStringLiteral("Downloading built-in model (~1.7 GB)…"));
+    appendLog(QStringLiteral("[embedded] Installing Python packages…"));
+
+    if (m_process) {
+        m_process->deleteLater();
+        m_process = nullptr;
+    }
+
+    auto* pipProc = new QProcess(this);
+    m_process = pipProc;
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    env.insert(QStringLiteral("ETEMENANKI_ROOT"), QCoreApplication::applicationDirPath());
+    env.insert(QStringLiteral("PYTHONIOENCODING"), QStringLiteral("utf-8"));
+    env.insert(QStringLiteral("PYTHONUTF8"), QStringLiteral("1"));
+    pipProc->setProcessEnvironment(env);
+    pipProc->setProgram(py);
+    if (!reqFile.isEmpty())
+        pipProc->setArguments(
+            {QStringLiteral("-m"), QStringLiteral("pip"), QStringLiteral("install"),
+             QStringLiteral("-q"), QStringLiteral("-r"), reqFile});
+    else
+        pipProc->setArguments({QStringLiteral("-m"), QStringLiteral("pip"), QStringLiteral("install"),
+                               QStringLiteral("-q"), QStringLiteral("llama-cpp-python"),
+                               QStringLiteral("huggingface_hub")});
+
+    connect(pipProc, &QProcess::readyReadStandardOutput, this, [this]() {
+        appendLog(QString::fromUtf8(m_process->readAllStandardOutput()));
+    });
+    connect(pipProc, &QProcess::readyReadStandardError, this, [this]() {
+        appendLog(QString::fromUtf8(m_process->readAllStandardError()));
+    });
+    connect(pipProc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
+            [this, script, py, env](int pipCode, QProcess::ExitStatus) {
+                if (pipCode != 0) {
+                    setBusy(false);
+                    setStatusText(QStringLiteral("pip install failed — see log"));
+                    m_process->deleteLater();
+                    m_process = nullptr;
+                    return;
+                }
+                appendLog(QStringLiteral("[embedded] Downloading GGUF…"));
+                auto* dlProc = new QProcess(this);
+                m_process = dlProc;
+                dlProc->setProcessEnvironment(env);
+                dlProc->setProgram(py);
+                dlProc->setArguments({script, QStringLiteral("download")});
+                connect(dlProc, &QProcess::readyReadStandardOutput, this, [this]() {
+                    appendLog(QString::fromUtf8(m_process->readAllStandardOutput()));
+                });
+                connect(dlProc, &QProcess::readyReadStandardError, this, [this]() {
+                    appendLog(QString::fromUtf8(m_process->readAllStandardError()));
+                });
+                connect(dlProc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
+                        [this](int code, QProcess::ExitStatus) {
+                            setBusy(false);
+                            setStatusText(code == 0 ? QStringLiteral("Built-in model ready")
+                                                    : QStringLiteral("Download failed — see log"));
+                            if (m_appSettings)
+                                m_appSettings->refreshAvailableModels();
+                            m_process->deleteLater();
+                            m_process = nullptr;
+                        });
+                dlProc->start();
+            });
+    pipProc->start();
+}
+
+void SetupManager::openWindowsGpuSettings()
+{
+    QDesktopServices::openUrl(QUrl(QStringLiteral("ms-settings:display-advancedgraphics")));
+}
+
 void SetupManager::appendLog(const QString& line)
 {
     m_logText += line + QLatin1Char('\n');
@@ -137,6 +399,86 @@ void SetupManager::setStatusText(const QString& text)
         return;
     m_statusText = text;
     emit statusTextChanged();
+}
+
+QJsonObject SetupManager::parseProbeJson(const QByteArray& stdoutBytes)
+{
+    const QString text = QString::fromUtf8(stdoutBytes).trimmed();
+    if (text.isEmpty())
+        return {};
+
+    // Probe prints a single JSON object; take the last line that looks like JSON.
+    const QStringList lines = text.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    for (int i = lines.size() - 1; i >= 0; --i) {
+        const QString line = lines.at(i).trimmed();
+        if (!line.startsWith(QLatin1Char('{')))
+            continue;
+        const QJsonDocument doc = QJsonDocument::fromJson(line.toUtf8());
+        if (doc.isObject())
+            return doc.object();
+    }
+
+    const int jsonStart = text.indexOf(QLatin1Char('{'));
+    if (jsonStart < 0)
+        return {};
+    const QJsonDocument doc = QJsonDocument::fromJson(text.mid(jsonStart).toUtf8());
+    return doc.isObject() ? doc.object() : QJsonObject{};
+}
+
+void SetupManager::applyProbeResult(const QJsonObject& root)
+{
+    if (root.isEmpty() || !root.value(QStringLiteral("ok")).toBool(false))
+        return;
+
+    m_hardware = root.toVariantMap();
+    m_recommendations = root.value(QStringLiteral("recommendations")).toArray().toVariantList();
+    m_depsStatus = root.value(QStringLiteral("deps")).toObject().toVariantMap();
+    emit depsStatusChanged();
+
+    QStringList installed;
+    for (const QJsonValue& v : root.value(QStringLiteral("ollama_installed")).toArray()) {
+        const QString name = v.toString().trimmed();
+        if (!name.isEmpty())
+            installed << name;
+    }
+    m_ollamaInstalled = installed;
+
+    const bool ready = root.contains(QStringLiteral("ram_gb")) && !m_recommendations.isEmpty();
+    if (m_probeReady != ready) {
+        m_probeReady = ready;
+        emit probeReadyChanged();
+    }
+
+    emit hardwareChanged();
+    emit recommendationsChanged();
+    emit ollamaInstalledChanged();
+
+    const double ram = root.value(QStringLiteral("ram_gb")).toDouble();
+    const QString tier = root.value(QStringLiteral("hardware_tier")).toString();
+    const double vram = root.value(QStringLiteral("vram_gb")).toDouble(-1.0);
+    QString status = QStringLiteral("RAM %1 GB").arg(ram, 0, 'f', 1);
+    if (vram >= 0.0)
+        status += QStringLiteral(", VRAM %1 GB").arg(vram, 0, 'f', 1);
+    if (!tier.isEmpty())
+        status += QStringLiteral(" · %1").arg(tier);
+    if (!installed.isEmpty())
+        status += QStringLiteral(" · Ollama: %1 model(s)").arg(installed.size());
+    const int recGpu = root.value(QStringLiteral("recommended_gpu_index")).toInt(-1);
+    if (m_appSettings && m_appSettings->preferredGpuIndex() < 0 && recGpu >= 0)
+        m_appSettings->setPreferredGpuIndex(recGpu);
+    if (m_depsStatus.value(QStringLiteral("python")).toBool()) {
+        const QString pyVer = m_depsStatus.value(QStringLiteral("python_version")).toString();
+        status += QStringLiteral(" · Python");
+        if (!pyVer.isEmpty())
+            status += QStringLiteral(" %1").arg(pyVer);
+        if (m_depsStatus.value(QStringLiteral("python_libs")).toBool())
+            status += QStringLiteral(" OK");
+        else
+            status += QStringLiteral(" (libs missing)");
+    } else {
+        status += QStringLiteral(" · Python: not found");
+    }
+    setStatusText(status);
 }
 
 QString SetupManager::bootstrapScriptPath() const
@@ -181,7 +523,7 @@ void SetupManager::probeHardware()
 
     setBusy(true);
     setStatusText(QStringLiteral("Analyzing hardware..."));
-    appendLog(QStringLiteral("[probe] starting"));
+    appendLog(QStringLiteral("[scan] Detecting RAM, GPU, Python and Ollama..."));
 
     if (m_process) {
         m_process->deleteLater();
@@ -193,6 +535,8 @@ void SetupManager::probeHardware()
     {
         QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
         env.insert(QStringLiteral("ETEMENANKI_ROOT"), QCoreApplication::applicationDirPath());
+        env.insert(QStringLiteral("PYTHONIOENCODING"), QStringLiteral("utf-8"));
+        env.insert(QStringLiteral("PYTHONUTF8"), QStringLiteral("1"));
         m_process->setProcessEnvironment(env);
     }
     connect(m_process, &QProcess::readyReadStandardError, this, [this]() {
@@ -202,28 +546,37 @@ void SetupManager::probeHardware()
             [this](int code, QProcess::ExitStatus) {
                 setBusy(false);
                 const QByteArray out = m_process->readAllStandardOutput();
-                if (!out.isEmpty())
-                    appendLog(QString::fromUtf8(out));
-                const int jsonStart = out.indexOf('{');
-                if (jsonStart >= 0) {
-                    const QJsonDocument doc = QJsonDocument::fromJson(out.mid(jsonStart));
-                    const QJsonObject root = doc.object();
-                    m_hardware = root.toVariantMap();
-                    m_recommendations = root.value(QStringLiteral("recommendations")).toArray().toVariantList();
-                    setStatusText(QStringLiteral("Hardware: %1 GB RAM, tier %2")
-                                      .arg(root.value(QStringLiteral("ram_gb")).toDouble())
-                                      .arg(root.value(QStringLiteral("hardware_tier")).toString()));
+                const QJsonObject root = parseProbeJson(out);
+                const bool ok = code == 0 && !root.isEmpty() && root.value(QStringLiteral("ok")).toBool(false);
+                if (ok) {
+                    applyProbeResult(root);
+                    const double ram = root.value(QStringLiteral("ram_gb")).toDouble();
+                    const QString tier = root.value(QStringLiteral("hardware_tier")).toString();
+                    appendLog(QStringLiteral("[scan] OK — %1 GB RAM, profile «%2», %3 model(s) recommended")
+                                  .arg(ram, 0, 'f', 1)
+                                  .arg(tier)
+                                  .arg(m_recommendations.size()));
                 } else {
-                    setStatusText(QStringLiteral("Probe failed (exit %1)").arg(code));
+                    if (!out.isEmpty())
+                        appendLog(QString::fromUtf8(out).trimmed());
+                    setStatusText(QStringLiteral("Scan failed (exit %1). Check Python and bootstrap.py.")
+                                      .arg(code));
+                    if (m_probeReady) {
+                        m_probeReady = false;
+                        emit probeReadyChanged();
+                    }
                 }
-                emit probeFinished();
+                emit probeFinished(ok);
                 m_process->deleteLater();
                 m_process = nullptr;
             });
     m_process->start();
 }
 
-void SetupManager::runSetup(const QStringList& ollamaModels, bool installPdf2zh, bool installPythonDeps)
+void SetupManager::runSetup(const QStringList& ollamaModels,
+                          bool installPdf2zh,
+                          bool installPythonDeps,
+                          bool installEmbeddedModel)
 {
     if (m_busy)
         return;
@@ -237,7 +590,9 @@ void SetupManager::runSetup(const QStringList& ollamaModels, bool installPdf2zh,
 
     setBusy(true);
     setStatusText(QStringLiteral("Installing components..."));
-    appendLog(QStringLiteral("[install] starting"));
+    m_logText.clear();
+    emit logTextChanged();
+    appendLog(QStringLiteral("[install] Starting setup..."));
 
     QStringList args = {script, QStringLiteral("install")};
     if (installPdf2zh)
@@ -248,6 +603,8 @@ void SetupManager::runSetup(const QStringList& ollamaModels, bool installPdf2zh,
         args << QStringLiteral("--ollama-models");
         args << ollamaModels;
     }
+    if (installEmbeddedModel)
+        args << QStringLiteral("--embedded-model");
 
     if (m_process) {
         m_process->deleteLater();
@@ -258,6 +615,8 @@ void SetupManager::runSetup(const QStringList& ollamaModels, bool installPdf2zh,
     m_process->setArguments(args);
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
     env.insert(QStringLiteral("ETEMENANKI_ROOT"), QCoreApplication::applicationDirPath());
+    env.insert(QStringLiteral("PYTHONIOENCODING"), QStringLiteral("utf-8"));
+    env.insert(QStringLiteral("PYTHONUTF8"), QStringLiteral("1"));
     m_process->setProcessEnvironment(env);
     connect(m_process, &QProcess::readyReadStandardOutput, this, [this]() {
         appendLog(QString::fromUtf8(m_process->readAllStandardOutput()));
@@ -266,13 +625,15 @@ void SetupManager::runSetup(const QStringList& ollamaModels, bool installPdf2zh,
         appendLog(QString::fromUtf8(m_process->readAllStandardError()));
     });
     connect(m_process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
-            [this, ollamaModels](int code, QProcess::ExitStatus) {
+            [this, ollamaModels, installEmbeddedModel](int code, QProcess::ExitStatus) {
                 setBusy(false);
                 const bool ok = code == 0;
                 setStatusText(ok ? QStringLiteral("Setup finished") : QStringLiteral("Setup finished with errors"));
                 if (m_appSettings) {
                     m_appSettings->refreshAvailableModels();
-                    if (!ollamaModels.isEmpty())
+                    if (installEmbeddedModel)
+                        m_appSettings->setSelectedLocalModel(QStringLiteral("gemma-2-2b-it-q4"));
+                    else if (!ollamaModels.isEmpty())
                         m_appSettings->setSelectedLocalModel(ollamaModels.first());
                 }
                 if (ok)

@@ -158,7 +158,9 @@ def export_html(meta: dict, output_path: Path) -> None:
     for item in _segments(meta):
         translated = item.get("text_translated") or item.get("text") or translated
     if raw and translated:
-        body = re.sub(r"(?is)<body[^>]*>.*?</body>", f"<body><pre>{translated}</pre></body>", raw, count=1)
+        import html as _html
+        safe = _html.escape(translated)
+        body = re.sub(r"(?is)<body[^>]*>.*?</body>", f"<body><pre>{safe}</pre></body>", raw, count=1)
         if body != raw:
             output_path.write_text(body, encoding="utf-8")
             return
@@ -183,7 +185,8 @@ def export_epub(source_path: Path, meta: dict, output_path: Path) -> None:
             continue
         key = f"ch{idx}"
         if key in mapping:
-            text = mapping[key]
+            import html as _html
+            text = _html.escape(mapping[key])
             html_body = f"<?xml version='1.0' encoding='utf-8'?><html><body><p>{text}</p></body></html>"
             item.set_content(html_body.encode("utf-8"))
         idx += 1

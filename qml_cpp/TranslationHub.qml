@@ -4,14 +4,12 @@ import QtQuick.Layouts
 
 Rectangle {
     id: hub
-    property color cText: "#1f2b3f"
-    property color cMuted: "#6a7892"
-    property color cBorder: "#d9e1ef"
-    property color cAccent: "#2f78ee"
+
+    EtePalette { id: pal }
 
     radius: 14
-    color: "#ffffff"
-    border.color: cBorder
+    color: pal.card
+    border.color: pal.border
     border.width: 1
     implicitHeight: content.implicitHeight + 20
 
@@ -28,15 +26,15 @@ Rectangle {
                 text: settings.uiText("hub_title", settings.appUiLanguage)
                 font.pixelSize: 14
                 font.weight: Font.DemiBold
-                color: cText
+                color: pal.text
             }
             Item { Layout.fillWidth: true }
             Label {
                 visible: backend.fileName.length > 0
                 text: backend.workflowTitle.length > 0 ? backend.workflowTitle : "—"
-                font.pixelSize: 12
+                font.pixelSize: pal.fontCaption
                 font.weight: Font.DemiBold
-                color: cAccent
+                color: pal.accent
             }
         }
 
@@ -44,8 +42,8 @@ Rectangle {
             Layout.fillWidth: true
             wrapMode: Text.WordWrap
             text: settings.uiText("hub_formats", settings.appUiLanguage)
-            color: cMuted
-            font.pixelSize: 11
+            color: pal.muted
+            font.pixelSize: pal.fontCaption
         }
 
         GridLayout {
@@ -55,22 +53,22 @@ Rectangle {
             rowSpacing: 4
             visible: backend.fileName.length > 0
 
-            Label { text: settings.uiText("hub_pipeline", settings.appUiLanguage); color: cMuted; font.pixelSize: 11 }
+            Label { text: settings.uiText("hub_pipeline", settings.appUiLanguage); color: pal.muted; font.pixelSize: pal.fontCaption }
             Label {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
                 text: backend.workflowPipeline.length > 0 ? backend.workflowPipeline : "—"
-                color: cText
-                font.pixelSize: 11
+                color: pal.text
+                font.pixelSize: pal.fontCaption
             }
 
-            Label { text: settings.uiText("hub_export", settings.appUiLanguage); color: cMuted; font.pixelSize: 11 }
+            Label { text: settings.uiText("hub_export", settings.appUiLanguage); color: pal.muted; font.pixelSize: pal.fontCaption }
             Label {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
                 text: backend.workflowExport.length > 0 ? backend.workflowExport : "TXT"
-                color: cText
-                font.pixelSize: 11
+                color: pal.text
+                font.pixelSize: pal.fontCaption
             }
         }
     }

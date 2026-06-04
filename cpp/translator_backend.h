@@ -160,6 +160,8 @@ public:
 
     Q_INVOKABLE void setSourceText(const QString& text);
 
+    Q_INVOKABLE void setStatusMessage(const QString& text);
+
     Q_INVOKABLE void loadFile(const QString& path);
 
     Q_INVOKABLE void loadFileFromUrl(const QUrl& url);

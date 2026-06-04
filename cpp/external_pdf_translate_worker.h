@@ -2,6 +2,7 @@
 
 #include "document_loader.h"
 
+#include <QAtomicInt>
 #include <QObject>
 #include <QProcess>
 
@@ -30,5 +31,5 @@ private:
     QProcess* m_proc = nullptr;
     QByteArray m_stdoutBuf;
     QByteArray m_stderrBuf;
-    bool m_cancelled = false;
+    QAtomicInt m_cancelled{0};
 };

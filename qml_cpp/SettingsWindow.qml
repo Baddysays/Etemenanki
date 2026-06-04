@@ -31,8 +31,15 @@ Window {
         }
     }
 
+    readonly property var settingsGpuList: {
+        const h = setup.hardware
+        return (h && h.gpus) ? h.gpus : []
+    }
+
     Component.onCompleted: {
         reloadUiLangModel()
+        if (!setup.probeReady && !setup.busy)
+            setup.probeHardware()
     }
 
     Connections {
@@ -443,6 +450,101 @@ Window {
                     }
                     SectionTitle { text: "Ollama" }
                     SectionCard {
+                        SectionTitle {
+                            text: settings.appUiLanguage === "ru" ? "Режим ИИ" : "AI mode"
+                        }
+                        StyledCombo {
+                            id: aiModeCombo
+                            Layout.fillWidth: true
+                            model: [
+                                { id: "auto", label: settings.appUiLanguage === "ru"
+                                    ? "Автоматически (рекомендуется)" : "Automatic (recommended)" },
+                                { id: "ollama", label: settings.appUiLanguage === "ru"
+                                    ? "Свой Ollama" : "My Ollama" },
+                                { id: "embedded", label: settings.appUiLanguage === "ru"
+                                    ? "Встроенная модель (скоро)" : "Built-in model (soon)" }
+                            ]
+                            textRole: "label"
+                            currentIndex: {
+                                if (settings.localAiMode === "ollama") return 1
+                                if (settings.localAiMode === "embedded") return 2
+                                return 0
+                            }
+                            onActivated: function(index) {
+                                const row = aiModeCombo.model[index]
+                                if (row)
+                                    settings.setLocalAiMode(row.id)
+                            }
+                        }
+                        SecondaryBtn {
+                            visible: settings.localAiMode !== "embedded"
+                            text: settings.appUiLanguage === "ru"
+                                ? "Запустить Ollama сейчас" : "Start Ollama now"
+                            onClicked: setup.ensureOllamaServing()
+                        }
+                        SecondaryBtn {
+                            visible: settings.localAiMode === "embedded"
+                            text: settings.appUiLanguage === "ru"
+                                ? "Скачать встроенную модель (~1,7 ГБ)"
+                                : "Download built-in model (~1.7 GB)"
+                            enabled: !setup.busy
+                            onClicked: setup.downloadEmbeddedModel()
+                        }
+                        SecondaryBtn {
+                            visible: settings.localAiMode === "embedded"
+                            text: settings.appUiLanguage === "ru"
+                                ? "Запустить встроенную модель" : "Start built-in model"
+                            onClicked: setup.ensureEmbeddedLlmServing()
+                        }
+                        Label {
+                            visible: win.settingsGpuList.length > 0
+                            text: settings.appUiLanguage === "ru"
+                                ? "Видеокарта для ИИ (дискретная, если их две)"
+                                : "GPU for AI (discrete if you have two)"
+                            color: pal.muted
+                            font.pixelSize: pal.fontCaption
+                        }
+                        StyledCombo {
+                            id: gpuSettingsCombo
+                            visible: win.settingsGpuList.length > 0
+                            Layout.fillWidth: true
+                            model: win.settingsGpuList
+                            textRole: "name"
+                            Component.onCompleted: syncGpuFromSettings()
+                            onModelChanged: syncGpuFromSettings()
+                            function syncGpuFromSettings() {
+                                const pick = settings.preferredGpuIndex
+                                for (let i = 0; i < win.settingsGpuList.length; ++i) {
+                                    if (Number(win.settingsGpuList[i].index) === pick) {
+                                        currentIndex = i
+                                        return
+                                    }
+                                }
+                                const h = setup.hardware
+                                if (h && h.recommended_gpu_index !== undefined) {
+                                    const rec = Number(h.recommended_gpu_index)
+                                    for (let j = 0; j < win.settingsGpuList.length; ++j) {
+                                        if (Number(win.settingsGpuList[j].index) === rec) {
+                                            currentIndex = j
+                                            settings.setPreferredGpuIndex(rec)
+                                            return
+                                        }
+                                    }
+                                }
+                                if (win.settingsGpuList.length > 0)
+                                    currentIndex = 0
+                            }
+                            onActivated: function(index) {
+                                const row = win.settingsGpuList[index]
+                                if (row)
+                                    settings.setPreferredGpuIndex(Number(row.index))
+                            }
+                        }
+                        SecondaryBtn {
+                            text: settings.appUiLanguage === "ru"
+                                ? "GPU для Ollama (Windows)" : "GPU for Ollama (Windows)"
+                            onClicked: setup.openWindowsGpuSettings()
+                        }
                         SectionTitle { text: settings.uiText("settings_server_url", settings.appUiLanguage) }
                         FieldInput {
                             id: ollamaField
@@ -483,8 +585,10 @@ Window {
                                     const w = Qt.createComponent("qrc:/Etemenanki/qml_cpp/SetupWizard.qml")
                                     if (w.status === Component.Ready) {
                                         const dlg = w.createObject(win)
-                                        if (dlg)
+                                        if (dlg) {
                                             dlg.show()
+                                            dlg.closed.connect(function() { dlg.destroy() })
+                                        }
                                     }
                                 }
                             }

@@ -1,0 +1,16 @@
+{
+  "default_model_id": "gemma-2-2b-it-q4",
+  "server_host": "127.0.0.1",
+  "server_port": 11435,
+  "models": [
+    {
+      "id": "gemma-2-2b-it-q4",
+      "filename": "gemma-2-2b-it-Q4_K_M.gguf",
+      "repo_id": "bartowski/gemma-2-2b-it-GGUF",
+      "repo_file": "gemma-2-2b-it-Q4_K_M.gguf",
+      "n_ctx": 4096,
+      "n_gpu_layers": -1,
+      "size_mb": 1700
+    }
+  ]
+}

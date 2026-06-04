@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.21)
-project(Etemenanki VERSION 1.0.0 LANGUAGES CXX RC)
+project(Etemenanki VERSION 1.0.1 LANGUAGES CXX RC)
 
 set(ETE_VERSION ${PROJECT_VERSION})
-set(ETE_VERSION_CODE 100)
+set(ETE_VERSION_CODE 101)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -16,6 +16,9 @@ if(EXISTS "${CMAKE_SOURCE_DIR}/.venv/Scripts/python.exe")
     file(TO_NATIVE_PATH "${CMAKE_SOURCE_DIR}/.venv/Scripts/python.exe" ETE_PYTHON_EXE)
     string(REPLACE "\\" "/" ETE_PYTHON_EXE "${ETE_PYTHON_EXE}")
 endif()
+
+set(ETE_PROJECT_SOURCE_DIR "${CMAKE_SOURCE_DIR}")
+string(REPLACE "\\" "/" ETE_PROJECT_SOURCE_DIR "${ETE_PROJECT_SOURCE_DIR}")
 
 configure_file(
     ${CMAKE_SOURCE_DIR}/cpp/runtime_config.h.in
@@ -135,6 +138,15 @@ add_custom_command(TARGET Etemenanki POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${CMAKE_SOURCE_DIR}/tools/setup_pdf2zh.ps1
         $<TARGET_FILE_DIR:Etemenanki>/tools/setup_pdf2zh.ps1
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_SOURCE_DIR}/tools/install_deps.ps1
+        $<TARGET_FILE_DIR:Etemenanki>/tools/install_deps.ps1
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_SOURCE_DIR}/tools/embedded_llm.py
+        $<TARGET_FILE_DIR:Etemenanki>/tools/embedded_llm.py
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_SOURCE_DIR}/tools/requirements-embedded.txt
+        $<TARGET_FILE_DIR:Etemenanki>/tools/requirements-embedded.txt
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${CMAKE_SOURCE_DIR}/tools/requirements-pdf.txt
         $<TARGET_FILE_DIR:Etemenanki>/tools/requirements-pdf.txt

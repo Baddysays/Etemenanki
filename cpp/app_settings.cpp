@@ -40,6 +40,55 @@ QJsonArray loadCatalogModels()
     return doc.object().value(QStringLiteral("models")).toArray();
 }
 
+QString embeddedManifestPath()
+{
+    QDir dir(QCoreApplication::applicationDirPath());
+    for (int i = 0; i < 8; ++i) {
+        const QString path = dir.filePath(QStringLiteral("engines/llm/manifest.json"));
+        if (QFile::exists(path))
+            return path;
+        if (!dir.cdUp())
+            break;
+    }
+    return {};
+}
+
+bool embeddedGgufOnDisk()
+{
+    const QString manifestPath = embeddedManifestPath();
+    if (manifestPath.isEmpty())
+        return false;
+    QFile mf(manifestPath);
+    if (!mf.open(QIODevice::ReadOnly))
+        return false;
+    const QJsonObject manifest = QJsonDocument::fromJson(mf.readAll()).object();
+    const QString defaultId = manifest.value(QStringLiteral("default_model_id")).toString();
+    QString filename;
+    for (const QJsonValue& v : manifest.value(QStringLiteral("models")).toArray()) {
+        const QJsonObject m = v.toObject();
+        if (m.value(QStringLiteral("id")).toString() == defaultId || filename.isEmpty()) {
+            filename = m.value(QStringLiteral("filename")).toString();
+            if (m.value(QStringLiteral("id")).toString() == defaultId)
+                break;
+        }
+    }
+    if (filename.isEmpty())
+        return false;
+    QDir dir(QFileInfo(manifestPath).absolutePath());
+    return QFile::exists(dir.filePath(QStringLiteral("models/") + filename));
+}
+
+QStringList embeddedCatalogIds(const QJsonArray& catalog)
+{
+    QStringList ids;
+    for (const QJsonValue& v : catalog) {
+        const QJsonObject obj = v.toObject();
+        if (obj.value(QStringLiteral("provider")).toString() == QStringLiteral("embedded"))
+            ids << obj.value(QStringLiteral("id")).toString();
+    }
+    return ids;
+}
+
 
 QString regionalFlag(const char* iso2)
 {
@@ -115,9 +164,29 @@ void AppSettings::load()
     m_polyglotPdfUrl = m_store.value(QStringLiteral("polyglotPdfUrl"), QStringLiteral("http://127.0.0.1:12226")).toString();
     m_retainPdfUrl = m_store.value(QStringLiteral("retainPdfUrl"), QStringLiteral("http://127.0.0.1:41000")).toString();
     m_retainPdfApiKey = m_store.value(QStringLiteral("retainPdfApiKey")).toString();
-    m_translateConcurrent = qBound(1, m_store.value(QStringLiteral("translateConcurrent"), 2).toInt(), 6);
+    m_translateConcurrent = qBound(1, m_store.value(QStringLiteral("translateConcurrent"), 1).toInt(), 6);
     m_glossaryText = m_store.value(QStringLiteral("glossaryText")).toString();
     m_glossaryEnabled = m_store.value(QStringLiteral("glossaryEnabled"), false).toBool();
+    if (m_store.contains(QStringLiteral("localAiMode"))) {
+        m_localAiMode = m_store.value(QStringLiteral("localAiMode")).toString();
+    } else {
+        m_localAiMode = QStringLiteral("auto");
+        QDir dir(QCoreApplication::applicationDirPath());
+        for (int i = 0; i < 8; ++i) {
+            if (QFile::exists(dir.filePath(QStringLiteral("engines/llm/.install_embedded_mode")))) {
+                m_localAiMode = QStringLiteral("embedded");
+                m_selectedLocal = QStringLiteral("gemma-2-2b-it-q4");
+                break;
+            }
+            if (!dir.cdUp())
+                break;
+        }
+    }
+    if (m_localAiMode != QStringLiteral("auto") && m_localAiMode != QStringLiteral("ollama")
+        && m_localAiMode != QStringLiteral("embedded")) {
+        m_localAiMode = QStringLiteral("auto");
+    }
+    m_preferredGpuIndex = m_store.value(QStringLiteral("preferredGpuIndex"), -1).toInt();
 
     const QVariantList stored = m_store.value(QStringLiteral("enabledLanguages")).toList();
     m_enabledLanguages.clear();
@@ -151,6 +220,8 @@ void AppSettings::save()
     m_store.setValue(QStringLiteral("translateConcurrent"), m_translateConcurrent);
     m_store.setValue(QStringLiteral("glossaryText"), m_glossaryText);
     m_store.setValue(QStringLiteral("glossaryEnabled"), m_glossaryEnabled);
+    m_store.setValue(QStringLiteral("localAiMode"), m_localAiMode);
+    m_store.setValue(QStringLiteral("preferredGpuIndex"), m_preferredGpuIndex);
     QVariantList langs;
     for (const QString& code : m_enabledLanguages)
         langs << code;
@@ -176,6 +247,32 @@ QString AppSettings::retainPdfApiKey() const { return m_retainPdfApiKey; }
 int AppSettings::translateConcurrent() const { return m_translateConcurrent; }
 QString AppSettings::glossaryText() const { return m_glossaryText; }
 bool AppSettings::glossaryEnabled() const { return m_glossaryEnabled; }
+QString AppSettings::localAiMode() const { return m_localAiMode; }
+int AppSettings::preferredGpuIndex() const { return m_preferredGpuIndex; }
+
+void AppSettings::setLocalAiMode(const QString& mode)
+{
+    QString m = mode.trimmed();
+    if (m != QStringLiteral("auto") && m != QStringLiteral("ollama") && m != QStringLiteral("embedded"))
+        m = QStringLiteral("auto");
+    if (m_localAiMode == m)
+        return;
+    m_localAiMode = m;
+    if (m == QStringLiteral("embedded"))
+        m_selectedLocal = QStringLiteral("gemma-2-2b-it-q4");
+    save();
+    emit changed();
+    refreshAvailableModels();
+}
+
+void AppSettings::setPreferredGpuIndex(int index)
+{
+    if (m_preferredGpuIndex == index)
+        return;
+    m_preferredGpuIndex = index;
+    save();
+    emit changed();
+}
 
 void AppSettings::setAppUiLanguage(const QString& code)
 {
@@ -498,11 +595,37 @@ void AppSettings::refreshAvailableModels()
             cloudCatalog << id;
     }
 
+    const QStringList embeddedCatalog = embeddedCatalogIds(catalog);
+    const bool embeddedReady = embeddedGgufOnDisk();
+    const QString aiMode = m_localAiMode;
+
+    if (aiMode == QStringLiteral("embedded")) {
+        QStringList local = embeddedReady ? embeddedCatalog : QStringList{};
+        QStringList cloud;
+        for (const QString& id : cloudCatalog) {
+            const QString provider = providerForModelId(id);
+            const QVariantMap p = cloudProvider(provider);
+            if (!p.value(QStringLiteral("enabled")).toBool())
+                continue;
+            const QString key = p.value(QStringLiteral("apiKey")).toString().trimmed();
+            const QString configuredModel = p.value(QStringLiteral("modelId")).toString().trimmed();
+            if (key.isEmpty())
+                continue;
+            if (configuredModel.isEmpty() || configuredModel == id)
+                cloud << id;
+        }
+        m_availableLocal = local;
+        m_availableCloud = cloud;
+        emit modelsChanged();
+        return;
+    }
+
     auto net = new QNetworkAccessManager(this);
     QNetworkRequest req(QUrl(m_ollamaBaseUrl + QStringLiteral("/api/tags")));
     req.setTransferTimeout(5000);
     QNetworkReply* reply = net->get(req);
-    connect(reply, &QNetworkReply::finished, this, [this, reply, net, localCatalog, cloudCatalog]() {
+    connect(reply, &QNetworkReply::finished, this,
+            [this, reply, net, localCatalog, cloudCatalog, embeddedCatalog, embeddedReady, aiMode]() {
         QStringList ollamaInstalled;
         if (reply->error() == QNetworkReply::NoError) {
             const QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
@@ -523,6 +646,12 @@ void AppSettings::refreshAvailableModels()
                     local << id;
                     break;
                 }
+            }
+        }
+        if (embeddedReady && aiMode == QStringLiteral("auto")) {
+            for (const QString& id : embeddedCatalog) {
+                if (!local.contains(id))
+                    local << id;
             }
         }
 
