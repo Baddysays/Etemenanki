@@ -4,7 +4,7 @@
 ; Then compile this ISS with Inno Setup 6.
 
 #define MyAppName "Etemenanki"
-#define MyAppVersion "1.0.1"
+#define MyAppVersion "1.0.2"
 #define MyAppPublisher "baddysays"
 #define MyAppURL "https://github.com/Baddysays/Etemenanki"
 #define MyAppExeName "Etemenanki.exe"
