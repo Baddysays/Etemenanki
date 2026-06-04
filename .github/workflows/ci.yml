@@ -5,14 +5,30 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   windows-qt:
     runs-on: windows-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Qt 6.8
+        id: qt1
+        uses: jurplel/install-qt-action@v4
+        continue-on-error: true
+        with:
+          version: "6.8.0"
+          host: windows
+          target: desktop
+          arch: win64_msvc2022_64
+          modules: qtpdf
+          cache: true
+
+      - name: Install Qt 6.8 (retry)
+        id: qt2
+        if: steps.qt1.outcome == 'failure'
         uses: jurplel/install-qt-action@v4
         with:
           version: "6.8.0"
@@ -20,6 +36,14 @@ jobs:
           target: desktop
           arch: win64_msvc2022_64
           modules: qtpdf
+          cache: true
+
+      - name: Verify Qt install
+        shell: pwsh
+        run: |
+          if ("${{ steps.qt1.outcome }}" -ne "success" -and "${{ steps.qt2.outcome }}" -ne "success") {
+            throw "Qt installation failed after two attempts (aqt/network). Re-run the workflow."
+          }
 
       - name: Configure
         env:
