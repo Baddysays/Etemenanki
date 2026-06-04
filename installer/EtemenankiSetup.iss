@@ -100,7 +100,7 @@ function BuildDepsArgs(): String;
 var
   args: String;
 begin
-  args := '-NoProfile -ExecutionPolicy Bypass -File "' + ExpandConstant('{app}\tools\install_deps.ps1') + '"';
+  args := '-NoProfile -ExecutionPolicy Bypass -File "' + ExpandConstant('{app}\tools\install_deps_ui.ps1') + '"';
   args := args + ' -AppRoot "' + ExpandConstant('{app}') + '"';
 
   if WizardIsTaskSelected('install_python') then
@@ -172,7 +172,7 @@ begin
     depsArgs := BuildDepsArgs();
     if DepsInstallRequested() then
     begin
-      WizardForm.StatusLabel.Caption := 'Установка Python и модели (~1,7 ГБ). Не закрывайте окно PowerShell!';
+      WizardForm.StatusLabel.Caption := 'Установка Python и модели (~1,7 ГБ). Следите за окном прогресса…';
       WizardForm.Update;
       Exec('powershell.exe', depsArgs, ExpandConstant('{app}'), SW_SHOW, ewWaitUntilTerminated, ResultCode);
       if ResultCode <> 0 then

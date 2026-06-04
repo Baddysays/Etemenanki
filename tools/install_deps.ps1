@@ -27,6 +27,10 @@ function Log($msg) {
     Add-Content -Path $LogFile -Value $line -Encoding UTF8
 }
 
+function Emit-Progress([int]$Percent) {
+    Log "ETEMENANKI_PROGRESS $Percent"
+}
+
 function Test-PythonAvailable {
     $embedded = Join-Path $PythonDir "python.exe"
     if (Test-Path $embedded) { return $embedded }
@@ -95,6 +99,7 @@ function Install-EmbeddedPython {
     $pythonPathTxt = Join-Path $AppRoot "tools\python_path.txt"
     Set-Content -Path $pythonPathTxt -Value $pyExe -Encoding UTF8
     Log "Python installed: $pyExe"
+    Emit-Progress 7
     return $pyExe
 }
 
@@ -127,6 +132,7 @@ function Install-PipDependencies {
     }
 
     Log "Python dependencies installed"
+    Emit-Progress 12
     return $true
 }
 
@@ -235,6 +241,7 @@ function Install-OllamaModels {
 Log "=== Etemenanki dependency installer ==="
 Log "App root: $AppRoot"
 Log "Log file: $LogFile"
+Emit-Progress 1
 
 $script:InstallOk = $true
 

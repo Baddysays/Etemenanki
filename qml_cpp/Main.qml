@@ -1135,10 +1135,7 @@ ApplicationWindow {
     Component.onCompleted: {
         settings.refreshAvailableModels()
         syncRuntimeFromModels()
-        if (!setup.setupComplete) {
+        if (!setup.setupComplete)
             setupWizard.show()
-        } else if (settings.localAiMode === "embedded" && !settings.localRuntimeAvailable) {
-            setup.downloadEmbeddedModel()
-        }
     }
 }

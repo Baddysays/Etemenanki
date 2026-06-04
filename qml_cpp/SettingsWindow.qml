@@ -187,7 +187,26 @@ Window {
         }
     }
 
+    component GhostBtn : Button {
+        implicitHeight: 40
+        padding: 14
+        flat: true
+        contentItem: Text {
+            text: parent.text
+            color: pal.accentText
+            font.pixelSize: pal.fontBody
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+        }
+        background: Rectangle {
+            radius: pal.radiusSm
+            color: parent.hovered ? pal.accentSoft : "transparent"
+            border.color: parent.hovered ? pal.accent : "transparent"
+        }
+    }
+
     component StyledCombo : ComboBox {
+        id: comboRoot
         implicitHeight: 40
         leftPadding: 12
         rightPadding: 12
@@ -213,11 +232,24 @@ Window {
             font.pixelSize: 10
         }
         delegate: ItemDelegate {
-            width: parent.width
+            width: comboRoot.width
             height: 36
-            required property string label
+            required property int index
+            required property var modelData
             contentItem: Text {
-                text: label
+                text: {
+                    if (!modelData)
+                        return ""
+                    if (comboRoot.textRole.length > 0 && modelData[comboRoot.textRole] !== undefined)
+                        return modelData[comboRoot.textRole]
+                    if (typeof modelData === "string")
+                        return modelData
+                    if (modelData.label !== undefined)
+                        return modelData.label
+                    if (modelData.name !== undefined)
+                        return modelData.name
+                    return String(modelData)
+                }
                 color: pal.text
                 leftPadding: 12
                 verticalAlignment: Text.AlignVCenter

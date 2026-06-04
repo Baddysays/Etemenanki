@@ -142,6 +142,9 @@ add_custom_command(TARGET Etemenanki POST_BUILD
         ${CMAKE_SOURCE_DIR}/tools/install_deps.ps1
         $<TARGET_FILE_DIR:Etemenanki>/tools/install_deps.ps1
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_SOURCE_DIR}/tools/install_deps_ui.ps1
+        $<TARGET_FILE_DIR:Etemenanki>/tools/install_deps_ui.ps1
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${CMAKE_SOURCE_DIR}/tools/embedded_llm.py
         $<TARGET_FILE_DIR:Etemenanki>/tools/embedded_llm.py
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
