@@ -159,8 +159,9 @@ begin
       Exec('powershell.exe', depsArgs, ExpandConstant('{app}'), SW_SHOW, ewWaitUntilTerminated, ResultCode);
       if ResultCode <> 0 then
       begin
-        MsgBox('Некоторые зависимости не установлены.' + #13#10 +
-               'Вы можете повторить установку позже через Мастер настройки в приложении.', mbInformation, MB_OK);
+        MsgBox('Некоторые зависимости не установлены (модель ~1,7 ГБ могла не докачаться).' + #13#10 +
+               'Откройте Etemenanki → Настройки → «Скачать встроенную модель».' + #13#10 +
+               'Журнал: %TEMP%\Etemenanki-install-deps.log', mbInformation, MB_OK);
       end;
     end;
   end;

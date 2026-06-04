@@ -123,15 +123,31 @@ def cmd_download(app_root: Path) -> int:
     if not repo_id or not repo_file:
         print("Manifest missing repo_id/repo_file", file=sys.stderr)
         return 1
-    print(f"Downloading {repo_id} / {repo_file} (~{model.get('size_mb', '?')} MB)...")
-    cached = hf_hub_download(repo_id=repo_id, filename=repo_file, local_dir=models_dir(app_root))
+    min_bytes = int(float(model.get("size_mb", 1500)) * 1024 * 1024 * 0.85)
+    if dest.is_file() and dest.stat().st_size >= min_bytes:
+        print(f"Already complete: {dest} ({dest.stat().st_size // (1024 * 1024)} MB)")
+        return 0
+    if dest.is_file() and dest.stat().st_size < min_bytes:
+        print(f"Removing incomplete file ({dest.stat().st_size} bytes)...")
+        dest.unlink()
+
+    print(f"Downloading {repo_id} / {repo_file} (~{model.get('size_mb', '?')} MB)...", flush=True)
+    cached = hf_hub_download(
+        repo_id=repo_id,
+        filename=repo_file,
+        local_dir=str(models_dir(app_root)),
+        resume_download=True,
+    )
     cached_path = Path(cached)
     if cached_path.resolve() != dest.resolve():
         if dest.exists():
             dest.unlink()
         cached_path.replace(dest)
-    print(f"Saved: {dest}")
-    return 0 if dest.is_file() else 1
+    if not dest.is_file() or dest.stat().st_size < min_bytes:
+        print("Download incomplete — check internet and retry", file=sys.stderr)
+        return 1
+    print(f"Saved: {dest} ({dest.stat().st_size // (1024 * 1024)} MB)")
+    return 0
 
 
 def _start_server_process(app_root: Path, model_path: Path, manifest: dict) -> subprocess.Popen | None:
@@ -180,8 +196,19 @@ def cmd_serve(app_root: Path) -> int:
     try:
         import llama_cpp  # noqa: F401
     except ImportError:
-        print("Install: pip install llama-cpp-python", file=sys.stderr)
-        return 2
+        print("Installing llama-cpp-python (first run, may take a few minutes)...", flush=True)
+        import subprocess as sp
+
+        req = find_app_root() / "tools" / "requirements-embedded.txt"
+        cmd = [sys.executable, "-m", "pip", "install", "--prefer-binary", "-q"]
+        if req.is_file():
+            cmd += ["-r", str(req)]
+        else:
+            cmd += ["llama-cpp-python"]
+        if sp.call(cmd) != 0:
+            print("pip install llama-cpp-python failed", file=sys.stderr)
+            return 2
+        import llama_cpp  # noqa: F401
 
     host = manifest.get("server_host", "127.0.0.1")
     port = int(manifest.get("server_port", 11435))

@@ -299,7 +299,8 @@ void SetupManager::downloadEmbeddedModel()
     if (m_busy)
         return;
     const QString script = findFileUpwards(QStringLiteral("tools/embedded_llm.py"));
-    const QString reqFile = findFileUpwards(QStringLiteral("tools/requirements-embedded.txt"));
+    const QString reqFile = findFileUpwards(QStringLiteral("tools/requirements-embedded-download.txt"));
+    const QString reqFallback = findFileUpwards(QStringLiteral("tools/requirements-embedded.txt"));
     const QString py = pythonExecutable();
     if (script.isEmpty() || py.isEmpty()) {
         setStatusText(QStringLiteral("Python or embedded_llm.py not found"));
@@ -323,13 +324,14 @@ void SetupManager::downloadEmbeddedModel()
     env.insert(QStringLiteral("PYTHONUTF8"), QStringLiteral("1"));
     pipProc->setProcessEnvironment(env);
     pipProc->setProgram(py);
-    if (!reqFile.isEmpty())
+    const QString req = !reqFile.isEmpty() ? reqFile : reqFallback;
+    if (!req.isEmpty())
         pipProc->setArguments(
             {QStringLiteral("-m"), QStringLiteral("pip"), QStringLiteral("install"),
-             QStringLiteral("-q"), QStringLiteral("-r"), reqFile});
+             QStringLiteral("--prefer-binary"), QStringLiteral("-q"), QStringLiteral("-r"), req});
     else
         pipProc->setArguments({QStringLiteral("-m"), QStringLiteral("pip"), QStringLiteral("install"),
-                               QStringLiteral("-q"), QStringLiteral("llama-cpp-python"),
+                               QStringLiteral("--prefer-binary"), QStringLiteral("-q"),
                                QStringLiteral("huggingface_hub")});
 
     connect(pipProc, &QProcess::readyReadStandardOutput, this, [this]() {
@@ -366,6 +368,8 @@ void SetupManager::downloadEmbeddedModel()
                                                     : QStringLiteral("Download failed — see log"));
                             if (m_appSettings)
                                 m_appSettings->refreshAvailableModels();
+                            if (code == 0)
+                                probeHardware();
                             m_process->deleteLater();
                             m_process = nullptr;
                         });

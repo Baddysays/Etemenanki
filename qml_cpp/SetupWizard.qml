@@ -138,6 +138,8 @@ Window {
             parts.push(trRu("download models: ", "скачать модели: ") + selectedModels.join(", "))
         if (cbPdf2zh.selected)
             parts.push(trRu("PDF engine", "PDF-движок"))
+        if (wizard.localAiMode === "embedded")
+            parts.push(trRu("built-in AI model ~1.7 GB", "встроенная модель ИИ ~1,7 ГБ"))
         if (cbPythonDeps.selected && setup.depsStatus.python === true)
             parts.push(trRu("Python libraries", "библиотеки Python"))
         if (parts.length === 0)
@@ -713,6 +715,24 @@ Window {
                             ? trRu("Already installed ✓", "Уже установлен ✓")
                             : trRu("Layout-preserving PDF translation", "Перевод PDF с сохранением вёрстки")
                     }
+                    Label {
+                        visible: wizard.localAiMode === "embedded"
+                        text: setup.depsStatus.embedded === true
+                            ? trRu("Built-in model: downloaded ✓", "Встроенная модель: скачана ✓")
+                            : trRu("Built-in model: not yet downloaded (~1.7 GB)",
+                                   "Встроенная модель: ещё не скачана (~1,7 ГБ)")
+                        color: setup.depsStatus.embedded === true ? pal.ok : pal.warn
+                        font.pixelSize: pal.fontCaption
+                        wrapMode: Text.WordWrap
+                        Layout.fillWidth: true
+                    }
+                    PrimaryBtn {
+                        visible: wizard.localAiMode === "embedded"
+                                 && setup.depsStatus.embedded !== true
+                                 && !setup.busy
+                        text: trRu("Download built-in model now", "Скачать встроенную модель сейчас")
+                        onClicked: setup.downloadEmbeddedModel()
+                    }
                     OptionCard {
                         id: cbPythonDeps
                         selected: true
@@ -796,7 +816,7 @@ Window {
                         setup.runSetup(
                             wizard.localAiMode === "embedded" ? [] : wizard.selectedModels,
                             cbPdf2zh.selected,
-                            cbPythonDeps.selected,
+                            cbPythonDeps.selected || wizard.localAiMode === "embedded",
                             wizard.localAiMode === "embedded")
                     }
                 }

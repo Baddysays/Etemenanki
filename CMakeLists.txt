@@ -148,6 +148,9 @@ add_custom_command(TARGET Etemenanki POST_BUILD
         ${CMAKE_SOURCE_DIR}/tools/requirements-embedded.txt
         $<TARGET_FILE_DIR:Etemenanki>/tools/requirements-embedded.txt
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_SOURCE_DIR}/tools/requirements-embedded-download.txt
+        $<TARGET_FILE_DIR:Etemenanki>/tools/requirements-embedded-download.txt
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${CMAKE_SOURCE_DIR}/tools/requirements-pdf.txt
         $<TARGET_FILE_DIR:Etemenanki>/tools/requirements-pdf.txt
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:Etemenanki>/releases

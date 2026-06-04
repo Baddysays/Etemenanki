@@ -181,7 +181,7 @@ function Install-EmbeddedLlmModel {
         return $false
     }
 
-    $reqFile = Join-Path $AppRoot "tools\requirements-embedded.txt"
+    $reqDl = Join-Path $AppRoot "tools\requirements-embedded-download.txt"
     $script = Join-Path $AppRoot "tools\embedded_llm.py"
     if (-not (Test-Path $script)) {
         Log "ERROR: embedded_llm.py not found"
@@ -189,18 +189,18 @@ function Install-EmbeddedLlmModel {
     }
 
     $env:ETEMENANKI_ROOT = $AppRoot
-    Log "Installing llama-cpp-python and huggingface_hub..."
-    if (Test-Path $reqFile) {
-        & $PyExe -m pip install --no-warn-script-location -q -r $reqFile 2>&1 | ForEach-Object { Log "  pip: $_" }
-    } else {
-        & $PyExe -m pip install --no-warn-script-location -q llama-cpp-python huggingface_hub 2>&1 |
-            ForEach-Object { Log "  pip: $_" }
+    $hfArgs = @("-m", "pip", "install", "--no-warn-script-location", "--prefer-binary", "-q", "huggingface_hub")
+    if (Test-Path $reqDl) {
+        $hfArgs = @("-m", "pip", "install", "--no-warn-script-location", "--prefer-binary", "-q", "-r", $reqDl)
     }
+    Log "Installing huggingface_hub (for model download)..."
+    & $PyExe @hfArgs 2>&1 | ForEach-Object { Log "  pip: $_" }
     if ($LASTEXITCODE -ne 0) {
-        Log "WARNING: embedded pip install exited with code $LASTEXITCODE"
+        Log "ERROR: huggingface_hub install failed (code $LASTEXITCODE)"
+        return $false
     }
 
-    Log "Downloading built-in GGUF model (~1.7 GB)..."
+    Log "Downloading built-in GGUF model (~1.7 GB) — do not close this window..."
     & $PyExe $script download 2>&1 | ForEach-Object { Log "  embedded: $_" }
     if ($LASTEXITCODE -eq 0) {
         Log "Built-in model ready"
@@ -208,7 +208,7 @@ function Install-EmbeddedLlmModel {
         Set-Content -Path $flagFile -Value "1" -Encoding UTF8
         return $true
     }
-    Log "WARNING: embedded model download failed (code $LASTEXITCODE)"
+    Log "ERROR: embedded model download failed (code $LASTEXITCODE)"
     return $false
 }
 
@@ -234,6 +234,18 @@ function Install-OllamaModels {
 
 Log "=== Etemenanki dependency installer ==="
 Log "App root: $AppRoot"
+Log "Log file: $LogFile"
+
+$script:InstallOk = $true
+
+if ($InstallEmbeddedModel -and -not $InstallPython) {
+    Log "Embedded model: enabling Python install"
+    $InstallPython = $true
+}
+if ($InstallEmbeddedModel -and -not $InstallPipDeps) {
+    Log "Embedded model: enabling document libraries"
+    $InstallPipDeps = $true
+}
 
 $pyExe = $null
 
@@ -266,7 +278,14 @@ if ($InstallOllama) {
 
 if ($InstallEmbeddedModel) {
     if (-not $pyExe) { $pyExe = Test-PythonAvailable }
-    Install-EmbeddedLlmModel -PyExe $pyExe | Out-Null
+    if (-not (Install-EmbeddedLlmModel -PyExe $pyExe)) {
+        $script:InstallOk = $false
+    }
 }
 
-Log "=== Done ==="
+if ($script:InstallOk) {
+    Log "=== Done (OK) ==="
+    exit 0
+}
+Log "=== Done (errors — retry from Etemenanki Settings) ==="
+exit 1

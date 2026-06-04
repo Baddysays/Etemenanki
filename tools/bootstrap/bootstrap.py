@@ -571,7 +571,9 @@ def cmd_install(args: argparse.Namespace) -> int:
     if getattr(args, "embedded_model", False):
         py = resolve_python(app_root)
         script = app_root / "tools" / "embedded_llm.py"
-        req = app_root / "tools" / "requirements-embedded.txt"
+        req = app_root / "tools" / "requirements-embedded-download.txt"
+        if not req.exists():
+            req = app_root / "tools" / "requirements-embedded.txt"
         if not py:
             log("WARNING: Python not found for embedded model")
             ok = False
@@ -579,12 +581,12 @@ def cmd_install(args: argparse.Namespace) -> int:
             try:
                 if req.exists():
                     subprocess.check_call(
-                        [str(py), "-m", "pip", "install", "-q", "-r", str(req)],
+                        [str(py), "-m", "pip", "install", "--prefer-binary", "-q", "-r", str(req)],
                         cwd=str(app_root),
                     )
                 else:
                     subprocess.check_call(
-                        [str(py), "-m", "pip", "install", "-q", "llama-cpp-python", "huggingface_hub"],
+                        [str(py), "-m", "pip", "install", "--prefer-binary", "-q", "huggingface_hub"],
                         cwd=str(app_root),
                     )
                 subprocess.check_call(
