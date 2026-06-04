@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag to publish (e.g. v1.0.0)"
+        description: "Tag to publish (e.g. v1.0.1)"
         required: true
-        default: "v1.0.0"
+        default: "v1.0.1"
 
 permissions:
   contents: write
@@ -40,12 +40,21 @@ jobs:
         run: |
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
           cmake --build build --config Release
-
-      - name: Portable ZIP
-        run: |
           if (-not (Test-Path "build/Release/Etemenanki.exe")) {
             throw "Etemenanki.exe not found after build"
           }
+
+      - name: Deploy Qt runtime (windeployqt)
+        run: |
+          $windeployqt = Join-Path $env:QT_ROOT_DIR "bin/windeployqt.exe"
+          if (-not (Test-Path $windeployqt)) { throw "windeployqt not found: $windeployqt" }
+          $prev = $ErrorActionPreference
+          $ErrorActionPreference = "Continue"
+          & $windeployqt "build/Release/Etemenanki.exe" --qmldir "qml_cpp" 2>&1 | ForEach-Object { Write-Host $_ }
+          $ErrorActionPreference = $prev
+
+      - name: Portable ZIP
+        run: |
           Compress-Archive -Path "build/Release/*" -DestinationPath "etemenanki-portable.zip" -Force
 
       - name: Install Inno Setup
@@ -54,16 +63,14 @@ jobs:
       - name: Build installer
         run: |
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
-          if (Test-Path $iscc) {
-            & $iscc "installer/EtemenankiSetup.iss"
-            $built = Get-ChildItem "installer/dist/EtemenankiSetup-*.exe" | Select-Object -First 1
-            if ($built) {
-              Copy-Item $built.FullName "etemenanki-setup.exe" -Force
-            }
-          }
-          if (-not (Test-Path "etemenanki-setup.exe")) {
-            Write-Warning "Installer not built — release will ship portable ZIP only"
-          }
+          if (-not (Test-Path $iscc)) { throw "ISCC.exe not found after choco install" }
+          New-Item -ItemType Directory -Force -Path "installer/dist" | Out-Null
+          & $iscc "installer/EtemenankiSetup.iss"
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup compile failed with code $LASTEXITCODE" }
+          $built = Get-ChildItem "installer/dist/EtemenankiSetup-*.exe" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $built) { throw "EtemenankiSetup-*.exe not found in installer/dist" }
+          Copy-Item $built.FullName "etemenanki-setup.exe" -Force
+          Write-Host "Installer: etemenanki-setup.exe ($([math]::Round($built.Length / 1048576, 1)) MiB)"
 
       - name: Write update.json for this release
         env:
@@ -85,12 +92,6 @@ jobs:
           }
           $obj | ConvertTo-Json | Set-Content -Encoding utf8 releases/update.json
 
-      - name: Collect release files
-        run: |
-          $files = @("etemenanki-portable.zip", "releases/update.json")
-          if (Test-Path "etemenanki-setup.exe") { $files += "etemenanki-setup.exe" }
-          "RELEASE_FILES=$($files -join ',')" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8
-
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -101,6 +102,5 @@ jobs:
             etemenanki-portable.zip
             etemenanki-setup.exe
             releases/update.json
-          fail_on_unmatched_files: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
