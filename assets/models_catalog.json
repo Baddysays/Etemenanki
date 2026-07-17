@@ -30,8 +30,8 @@
       "speed_label_ru": "CPU/GPU",
       "quality_label_en": "High",
       "quality_label_ru": "Высокое",
-      "description": "Built-in model (~1.7 GB download). No Ollama — works after one setup step.",
-      "description_ru": "Встроенная модель (~1,7 ГБ). Без Ollama — после одной установки в мастере."
+      "description": "Built-in model (bundled with installer). No Ollama required.",
+      "description_ru": "Встроенная модель (внутри установщика). Ollama не нужна."
     },
     {
       "id": "translategemma:4b",

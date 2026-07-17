@@ -30,7 +30,14 @@ if (-not $SkipPrepare) {
     Write-Host "[2/4] Preparing release (downloading model + Python)..." -ForegroundColor Yellow
     & (Join-Path $PSScriptRoot "prepare_release.ps1") -BuildDir "build\Release"
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "WARNING: prepare_release.ps1 failed — installer will be incomplete" -ForegroundColor Red
+        Write-Error "prepare_release.ps1 failed — refuse to build incomplete installer"
+        exit 1
+    }
+    $gguf = Get-ChildItem -Path (Join-Path $Root "build\Release\engines\llm\models") -Filter "*.gguf" -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    if (-not $gguf) {
+        Write-Error "No .gguf model in build\Release\engines\llm\models — refuse to build incomplete installer"
+        exit 1
     }
 }
 
@@ -52,17 +59,20 @@ if (-not $SkipWinDeployQt) {
 # Step 4: Inno Setup
 Write-Host ""
 Write-Host "[4/4] Compiling installer..." -ForegroundColor Yellow
-$innoCompiler = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-if (Test-Path $innoCompiler) {
-    & $innoCompiler (Join-Path $Root "installer\EtemenankiSetup.iss")
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "Inno Setup compilation failed"
-        exit 1
-    }
-} else {
-    Write-Host "Inno Setup 6 not found at: $innoCompiler" -ForegroundColor Red
-    Write-Host "Download from: https://jrsoftware.org/isinfo.php" -ForegroundColor Yellow
-    Write-Host "Then open installer\EtemenankiSetup.iss and compile manually." -ForegroundColor Yellow
+$innoCompiler = @(
+    "C:\InnoSetup6\ISCC.exe",
+    "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+    "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
+) | Where-Object { Test-Path $_ } | Select-Object -First 1
+
+if (-not $innoCompiler) {
+    Write-Error "Inno Setup 6 ISCC.exe not found"
+    exit 1
+}
+& $innoCompiler (Join-Path $Root "installer\EtemenankiSetup.iss")
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Inno Setup compilation failed"
+    exit 1
 }
 
 # Summary

@@ -536,8 +536,8 @@ Window {
                         SecondaryBtn {
                             visible: settings.localAiMode === "embedded"
                             text: settings.appUiLanguage === "ru"
-                                ? "Скачать встроенную модель (~1,7 ГБ)"
-                                : "Download built-in model (~1.7 GB)"
+                                ? "Докачать модель (если нет в установке)"
+                                : "Download model (if missing from install)"
                             enabled: !setup.busy
                             onClicked: setup.downloadEmbeddedModel()
                         }

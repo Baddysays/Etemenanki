@@ -133,17 +133,3 @@ begin
     WizardForm.Update;
   end;
 end;
-
-function InitializeSetup(): Boolean;
-begin
-  if not FileExists(ExpandConstant('{#BuildDir}\{#MyAppExeName}')) then
-  begin
-    MsgBox('Сборка не найдена: {#BuildDir}\{#MyAppExeName}' + #13#10 +
-           'Выполните: cmake --build build --config Release' + #13#10 +
-           'Затем: scripts\prepare_release.ps1' + #13#10 +
-           'Затем: windeployqt build\Release\Etemenanki.exe', mbError, MB_OK);
-    Result := False;
-  end
-  else
-    Result := True;
-end;

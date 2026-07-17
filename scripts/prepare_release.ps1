@@ -69,10 +69,14 @@ if (-not $SkipPython) {
             & $PythonExe $compatScript 2>&1 | Out-Null
         }
 
-        $pythonPathTxt = Join-Path $BuildPath "tools\python_path.txt"
-        Set-Content -Path $pythonPathTxt -Value $PythonExe -Encoding UTF8
         Write-Host "[Python] Ready: $PythonExe" -ForegroundColor Green
     }
+
+    # Relative path so installed copies under Program Files still resolve
+    $toolsDir = Join-Path $BuildPath "tools"
+    New-Item -ItemType Directory -Force -Path $toolsDir | Out-Null
+    $pythonPathTxt = Join-Path $toolsDir "python_path.txt"
+    Set-Content -Path $pythonPathTxt -Value "engines\python\python.exe" -Encoding UTF8
 }
 
 # --- Embedded LLM model ---
@@ -85,7 +89,8 @@ if (-not $SkipModel) {
     }
 
     if (-not (Test-Path $ManifestFile)) {
-        Write-Host "[Model] No manifest.json found — skipping" -ForegroundColor Yellow
+        Write-Error "[Model] No manifest.json found"
+        exit 1
     } else {
         $manifest = Get-Content $ManifestFile -Raw | ConvertFrom-Json
         $model = $manifest.models | Select-Object -First 1
@@ -140,16 +145,32 @@ if (-not $SkipModel) {
             }
 
             if (-not $success) {
-                Write-Host "[Model] FAILED after $maxRetries attempts. You can retry later from the app." -ForegroundColor Red
+                Write-Error "[Model] FAILED after $maxRetries attempts. Aborting — installer would be incomplete."
+                exit 1
             }
         }
 
         $flagDir = Join-Path $BuildPath "engines\llm"
         $flagFile = Join-Path $flagDir ".install_embedded_mode"
-        if (Test-Path $modelPath) {
-            New-Item -ItemType Directory -Force -Path $flagDir | Out-Null
-            Set-Content -Path $flagFile -Value "1" -Encoding UTF8
+        if (-not (Test-Path $modelPath)) {
+            Write-Error "[Model] Missing: $modelPath"
+            exit 1
         }
+        New-Item -ItemType Directory -Force -Path $flagDir | Out-Null
+        Set-Content -Path $flagFile -Value "1" -Encoding UTF8
+    }
+}
+
+# --- Optional: preinstall llama-cpp-python into bundled Python ---
+$bundledPy = Join-Path $BuildPath "engines\python\python.exe"
+$reqEmbedded = Join-Path $Root "tools\requirements-embedded.txt"
+if ((Test-Path $bundledPy) -and (Test-Path $reqEmbedded) -and -not $SkipPython) {
+    Write-Host "[Python] Installing llama-cpp-python into bundled Python (first-run offline)..." -ForegroundColor Yellow
+    & $bundledPy -m pip install --no-warn-script-location --prefer-binary -q -r $reqEmbedded 2>&1 | ForEach-Object { Write-Host "  $_" }
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "[Python] WARNING: llama-cpp-python install failed — first translate may need network" -ForegroundColor Yellow
+    } else {
+        Write-Host "[Python] llama-cpp-python ready" -ForegroundColor Green
     }
 }
 

@@ -4,9 +4,12 @@
 #include "version.h"
 
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QDesktopServices>
 #include <QDir>
+#include <QEventLoop>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -276,10 +279,22 @@ bool SetupManager::ensureEmbeddedLlmServing()
         setStatusText(QStringLiteral("Could not start built-in AI"));
         return false;
     }
-    if (!proc.waitForFinished(120000)) {
-        proc.kill();
-        setStatusText(QStringLiteral("Built-in AI start timed out — download the model in Settings"));
-        return false;
+
+    // Keep UI responsive while waiting (pip/first start can take a while)
+    const qint64 deadlineMs = QDateTime::currentMSecsSinceEpoch() + 180000;
+    while (QDateTime::currentMSecsSinceEpoch() < deadlineMs) {
+        if (proc.waitForFinished(250))
+            break;
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+        if (embeddedPortOpen())
+            break;
+    }
+    if (proc.state() != QProcess::NotRunning) {
+        // Server may already be listening while helper still exits; give it a moment
+        if (!embeddedPortOpen())
+            proc.kill();
+        else
+            proc.waitForFinished(5000);
     }
 
     if (embeddedPortOpen()) {
@@ -290,7 +305,7 @@ bool SetupManager::ensureEmbeddedLlmServing()
     }
 
     const QString out = QString::fromUtf8(proc.readAllStandardOutput()).trimmed();
-    setStatusText(out.isEmpty() ? QStringLiteral("Built-in AI did not start — download model first")
+    setStatusText(out.isEmpty() ? QStringLiteral("Built-in AI did not start — check model / llama-cpp")
                                 : out.left(240));
     return false;
 }
@@ -529,15 +544,41 @@ QString SetupManager::bootstrapScriptPath() const
 
 QString SetupManager::pythonExecutable() const
 {
+    const QString appDir = QCoreApplication::applicationDirPath();
+    const QString bundled = QDir(appDir).filePath(QStringLiteral("engines/python/python.exe"));
+    if (QFile::exists(bundled))
+        return QDir::toNativeSeparators(bundled);
+
     const QString pathTxt = findFileUpwards(QStringLiteral("tools/python_path.txt"));
     if (!pathTxt.isEmpty()) {
         QFile f(pathTxt);
         if (f.open(QIODevice::ReadOnly)) {
-            const QString line = QString::fromUtf8(f.readAll()).trimmed().split(QLatin1Char('\n')).value(0).trimmed();
-            if (QFile::exists(line))
-                return line;
+            QString line = QString::fromUtf8(f.readAll()).trimmed().split(QLatin1Char('\n')).value(0).trimmed();
+            line.remove(QChar(0xFEFF));
+            if (!line.isEmpty()) {
+                QFileInfo fi(line);
+                if (fi.isRelative()) {
+                    const QString fromApp = QDir(appDir).filePath(line);
+                    if (QFile::exists(fromApp))
+                        return QDir::toNativeSeparators(fromApp);
+                    const QString fromTxt = QDir(QFileInfo(pathTxt).absolutePath()).filePath(line);
+                    // tools/python_path.txt → ../engines/python/python.exe when relative is engines\...
+                    const QString fromRoot = QDir(QFileInfo(pathTxt).absoluteDir().absoluteFilePath(QStringLiteral(".."))).filePath(line);
+                    if (QFile::exists(fromRoot))
+                        return QDir::toNativeSeparators(fromRoot);
+                    if (QFile::exists(fromTxt))
+                        return QDir::toNativeSeparators(fromTxt);
+                } else if (QFile::exists(line)) {
+                    return QDir::toNativeSeparators(line);
+                }
+            }
         }
     }
+
+    const QString upwards = findFileUpwards(QStringLiteral("engines/python/python.exe"));
+    if (!upwards.isEmpty())
+        return QDir::toNativeSeparators(upwards);
+
     return QStringLiteral("python");
 }
 
