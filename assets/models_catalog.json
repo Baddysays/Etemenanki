@@ -19,19 +19,19 @@
   },
   "models": [
     {
-      "id": "gemma-2-2b-it-q4",
+      "id": "translategemma-4b-it-q3",
       "provider": "embedded",
       "tier": "light",
-      "translation_quality": 4,
-      "speed_score": 4,
+      "translation_quality": 5,
+      "speed_score": 5,
       "required_ram_gb": 8,
       "required_vram_gb": 4,
       "speed_label_en": "CPU/GPU",
       "speed_label_ru": "CPU/GPU",
       "quality_label_en": "High",
       "quality_label_ru": "Высокое",
-      "description": "Built-in model (bundled with installer). No Ollama required.",
-      "description_ru": "Встроенная модель (внутри установщика). Ollama не нужна."
+      "description": "Built-in TranslateGemma 4B (bundled). Specialized for translation, no Ollama.",
+      "description_ru": "Встроенная TranslateGemma 4B (в установщике). Заточена под перевод, без Ollama."
     },
     {
       "id": "translategemma:4b",
@@ -47,8 +47,8 @@
       "quality_label": "Высокое",
       "quality_label_en": "High",
       "quality_label_ru": "Высокое",
-      "description": "Recommended default: fast document translation, best speed/quality balance.",
-      "description_ru": "Рекомендуется по умолчанию: быстрый перевод документов."
+      "description": "Same TranslateGemma via Ollama (optional alternative).",
+      "description_ru": "Та же TranslateGemma через Ollama (опционально)."
     },
     {
       "id": "translategemma:12b",

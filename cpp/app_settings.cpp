@@ -8,6 +8,7 @@
 #include <QDesktopServices>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -76,6 +77,24 @@ bool embeddedGgufOnDisk()
         return false;
     QDir dir(QFileInfo(manifestPath).absolutePath());
     return QFile::exists(dir.filePath(QStringLiteral("models/") + filename));
+}
+
+QString defaultEmbeddedModelId()
+{
+    const QString manifestPath = embeddedManifestPath();
+    if (!manifestPath.isEmpty()) {
+        QFile mf(manifestPath);
+        if (mf.open(QIODevice::ReadOnly)) {
+            const QString id = QJsonDocument::fromJson(mf.readAll())
+                                   .object()
+                                   .value(QStringLiteral("default_model_id"))
+                                   .toString()
+                                   .trimmed();
+            if (!id.isEmpty())
+                return id;
+        }
+    }
+    return QStringLiteral("translategemma-4b-it-q3");
 }
 
 QStringList embeddedCatalogIds(const QJsonArray& catalog)
@@ -175,7 +194,7 @@ void AppSettings::load()
         for (int i = 0; i < 8; ++i) {
             if (QFile::exists(dir.filePath(QStringLiteral("engines/llm/.install_embedded_mode")))) {
                 m_localAiMode = QStringLiteral("embedded");
-                m_selectedLocal = QStringLiteral("gemma-2-2b-it-q4");
+                m_selectedLocal = defaultEmbeddedModelId();
                 break;
             }
             if (!dir.cdUp())
@@ -259,7 +278,7 @@ void AppSettings::setLocalAiMode(const QString& mode)
         return;
     m_localAiMode = m;
     if (m == QStringLiteral("embedded"))
-        m_selectedLocal = QStringLiteral("gemma-2-2b-it-q4");
+        m_selectedLocal = defaultEmbeddedModelId();
     save();
     emit changed();
     refreshAvailableModels();

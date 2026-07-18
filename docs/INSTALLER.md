@@ -2,7 +2,7 @@
 
 ## Overview
 
-Etemenanki uses a **self-contained installer** — everything (model, Python, libraries) is bundled inside the `.exe`. User downloads one file (~1.8 GB), installs in 2 clicks, and everything works immediately.
+Etemenanki uses a **self-contained installer** — everything (TranslateGemma 4B model, Python, libraries) is bundled inside the `.exe`. User downloads one file (~2.0–2.1 GB), installs in 2 clicks, and everything works immediately.
 
 **No post-install downloads required.** Model and Python are pre-downloaded during release preparation.
 
@@ -24,7 +24,7 @@ cmake --build build --config Release
 This script:
 - Downloads Python 3.12 embeddable → `build/Release/engines/python/`
 - Installs pip dependencies (PyMuPDF, python-docx, etc.)
-- Downloads embedded LLM model (~1.7 GB) → `build/Release/engines/llm/models/`
+- Downloads embedded TranslateGemma 4B Q3_K_S (~1.8 GB) → `build/Release/engines/llm/models/`
 - Sets up `tools/python_path.txt`
 
 **Time:** ~15-30 minutes depending on internet speed.
@@ -39,7 +39,7 @@ windeployqt build\Release\Etemenanki.exe
 
 Open `installer\EtemenankiSetup.iss` in **Inno Setup 6** and compile.
 
-**Output:** `installer\dist\EtemenankiSetup-1.0.4.exe` (~1.8 GB)
+**Output:** `installer\dist\EtemenankiSetup-1.0.5.exe` (~2.0–2.1 GB)
 
 Or use the build script:
 
@@ -53,16 +53,16 @@ Or use the build script:
 |-----------|------|---------|
 | Etemenanki.exe + Qt DLLs | ~50 MB | Main application |
 | `engines/python/` | ~200 MB | Python 3.12 + libraries |
-| `engines/llm/models/*.gguf` | ~1.7 GB | Built-in AI model |
+| `engines/llm/models/*.gguf` | ~1.8 GB | TranslateGemma 4B Q3_K_S |
 | `tools/` | ~5 MB | Python scripts |
 | `assets/`, `releases/` | ~1 MB | Config, OTA updates |
-| **Total** | **~1.8 GB** | **Everything included** |
+| **Total** | **~2.0–2.1 GB** | **Under GitHub 2 GiB limit** |
 
 ## User Experience
 
-1. User downloads `EtemenankiSetup-1.0.4.exe` from GitHub Releases
+1. User downloads `EtemenankiSetup-1.0.5.exe` from GitHub Releases
 2. Runs installer → clicks "Next" → "Install" → "Finish"
-3. Launches Etemenanki → sees "Welcome! Everything is ready" → clicks "Start"
+3. Launches Etemenanki → sees welcome / status → clicks "Start"
 4. Loads document → translates → saves result
 
 **No additional downloads, no configuration, no Ollama needed.**
@@ -73,14 +73,14 @@ The installer offers an optional checkbox to download **pdf2zh** (~200 MB) for l
 
 ## GitHub Updates (OTA)
 
-1. Create release tag `v1.0.4` with asset `EtemenankiSetup-1.0.4.exe`
+1. Create release tag `v1.0.5` with asset `EtemenankiSetup-1.0.5.exe`
 2. Update `releases/update.json`:
    ```json
    {
-     "version_code": 104,
-     "version_name": "1.0.4",
-     "setup_url": "https://github.com/Baddysays/Etemenanki/releases/download/v1.0.4/EtemenankiSetup-1.0.4.exe",
-     "release_notes": "Self-contained installer — no post-install downloads"
+     "version_code": 105,
+     "version_name": "1.0.5",
+     "setup_url": "https://github.com/Baddysays/Etemenanki/releases/download/v1.0.5/EtemenankiSetup-1.0.5.exe",
+     "release_notes": "TranslateGemma 4B bundled — translation-focused built-in model"
    }
    ```
 3. App: **Settings → Check for updates** notifies user
@@ -116,15 +116,12 @@ See `.github/workflows/release-windows.yml`:
 
 The script retries 3 times. If all fail:
 - Check internet connection
-- Try manual download: `https://huggingface.co/bartowski/gemma-2-2b-it-GGUF/resolve/main/gemma-2-2b-it-Q4_K_M.gguf`
+- Try manual download: `https://huggingface.co/aoiandroid/translategemma-4b-it-GGUF/resolve/main/translategemma-4b-it.Q3_K_S.gguf`
 - Place file in `build/Release/engines/llm/models/`
 
 ### Installer size too large for GitHub Releases
 
-GitHub allows files up to 2 GB. If model grows, consider:
-- Split into `EtemenankiSetup-1.0.4-part1.exe` + `part2.exe`
-- Use GitHub Releases with LFS
-- Host on separate CDN
+GitHub allows files up to **2 GiB**. The bundled quant is **Q3_K_S** (~1.8 GiB) so the full setup stays under the limit. Do not switch to Q4_K_M (~2.5 GiB) for the GitHub-hosted installer without an external host.
 
 ### User wants Ollama instead of embedded model
 

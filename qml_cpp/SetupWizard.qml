@@ -259,6 +259,8 @@ Window {
     }
 
     function applyAndClose() {
+        if (wizard.embeddedReady)
+            settings.setLocalAiMode("embedded")
         setup.markSetupComplete()
         wizard.close()
     }

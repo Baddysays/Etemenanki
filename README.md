@@ -8,7 +8,7 @@
 [![CI](https://github.com/Baddysays/Etemenanki/actions/workflows/ci.yml/badge.svg)](https://github.com/Baddysays/Etemenanki/actions/workflows/ci.yml)
 [![Release Windows](https://github.com/Baddysays/Etemenanki/actions/workflows/release-windows.yml/badge.svg)](https://github.com/Baddysays/Etemenanki/actions/workflows/release-windows.yml)
 
-**Нет легкого пути от земли к звездам** — перевод PDF, DOCX, TXT и других форматов с локальными моделями (Ollama) или облаком.
+**Нет легкого пути от земли к звездам** — перевод PDF, DOCX, TXT и других форматов. В установщике уже есть **TranslateGemma 4B** (без Ollama); при желании — Ollama или облако.
 
 *by **baddysays*** · ✉️ [hello@baddysays.ru](mailto:hello@baddysays.ru) · 💬 [@baddysays](https://t.me/baddysays)
 
@@ -17,15 +17,15 @@
 Etemenanki — настольное приложение (Windows) на **Qt 6.8 + QML**:
 
 - загрузка документа и извлечение текста (Python / PyMuPDF);
-- перевод через **Ollama** локально или **OpenAI-compatible API** в облаке;
+- перевод через **встроенную TranslateGemma**, **Ollama** или **облачный API**;
 - сохранение результата (TXT, DOCX, PDF с вёрсткой — где поддерживается);
-- мастер первого запуска: подбор моделей под ваш ПК, докачка pdf2zh и зависимостей.
+- простой первый запуск: статус компонентов → **Начать**.
 
 ## Скачать
 
 | Способ | Ссылка |
 |--------|--------|
-| Установщик | [etemenanki-setup.exe](https://github.com/Baddysays/Etemenanki/releases/latest/download/etemenanki-setup.exe) |
+| Установщик (всё включено) | [EtemenankiSetup](https://github.com/Baddysays/Etemenanki/releases/latest) |
 | Портативная сборка | [etemenanki-portable.zip](https://github.com/Baddysays/Etemenanki/releases/latest/download/etemenanki-portable.zip) |
 | Все релизы | [GitHub Releases](https://github.com/Baddysays/Etemenanki/releases) |
 
@@ -33,26 +33,27 @@ Etemenanki — настольное приложение (Windows) на **Qt 6.8
 
 ## Быстрый старт (пользователь)
 
-1. Скачайте [последний релиз](https://github.com/Baddysays/Etemenanki/releases/latest).
-2. Установите [Ollama](https://ollama.com/download/windows) и запустите `ollama serve`.
-3. Запустите Etemenanki — откроется **мастер настройки** (модели, pdf2zh, Python).
-4. Загрузите файл → выберите языки → **Перевести** → **Сохранить**.
+1. Скачайте [установщик](https://github.com/Baddysays/Etemenanki/releases/latest) (~2 ГБ — модель уже внутри).
+2. Установите и откройте → **Начать**.
+3. Загрузите файл → языки → **Перевести** → **Сохранить**.
+
+Ollama **не обязательна**. Для более крупных моделей через Ollama см. таблицу ниже.
 
 Подробнее: [docs/DLYA-POLZOVATELYA.md](docs/DLYA-POLZOVATELYA.md) · [docs/INSTALLER.md](docs/INSTALLER.md)
 
-## Рекомендуемые локальные модели
+## Модели
 
-| Профиль ПК | Модели |
-|------------|--------|
-| Слабый (≤11 GB RAM) | `translategemma:4b` |
-| Средний | `translategemma:4b`, `qwen2.5:7b` |
-| Мощный | `translategemma:12b` |
+| Профиль | Что использовать |
+|---------|------------------|
+| По умолчанию (установщик) | **TranslateGemma 4B** встроенная |
+| Ollama, слабый ПК | `translategemma:4b` |
+| Ollama, мощный ПК | `translategemma:12b` |
 
 ```powershell
 ollama pull translategemma:4b
 ```
 
-Каталог и рекомендации: `assets/models_catalog.json`, мастер настройки в приложении.
+Каталог: `assets/models_catalog.json`.
 
 ## Сборка из исходников
 

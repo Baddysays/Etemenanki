@@ -6,11 +6,11 @@
 ;   3. windeployqt build\Release\Etemenanki.exe
 ;   4. Compile this ISS with Inno Setup 6
 ;
-; Result: single .exe installer (~1.8 GB) with everything included.
-; User installs in 2 clicks — no post-install downloads needed.
+; Result: single .exe installer (~2.0–2.1 GB) with TranslateGemma 4B included.
+; User installs in 2 clicks — no post-install model download needed.
 
 #define MyAppName "Etemenanki"
-#define MyAppVersion "1.0.4"
+#define MyAppVersion "1.0.5"
 #define MyAppPublisher "baddysays"
 #define MyAppURL "https://github.com/Baddysays/Etemenanki"
 #define MyAppExeName "Etemenanki.exe"
