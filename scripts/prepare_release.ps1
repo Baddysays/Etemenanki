@@ -162,15 +162,40 @@ if (-not $SkipModel) {
 }
 
 # --- Optional: preinstall llama-cpp-python into bundled Python ---
+# Must not abort the script: $ErrorActionPreference=Stop + pip stderr can kill the job.
 $bundledPy = Join-Path $BuildPath "engines\python\python.exe"
-$reqEmbedded = Join-Path $Root "tools\requirements-embedded.txt"
-if ((Test-Path $bundledPy) -and (Test-Path $reqEmbedded) -and -not $SkipPython) {
-    Write-Host "[Python] Installing llama-cpp-python into bundled Python (first-run offline)..." -ForegroundColor Yellow
-    & $bundledPy -m pip install --no-warn-script-location --prefer-binary -q -r $reqEmbedded 2>&1 | ForEach-Object { Write-Host "  $_" }
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "[Python] WARNING: llama-cpp-python install failed — first translate may need network" -ForegroundColor Yellow
-    } else {
-        Write-Host "[Python] llama-cpp-python ready" -ForegroundColor Green
+if ((Test-Path $bundledPy) -and -not $SkipPython) {
+    Write-Host "[Python] Installing llama-cpp-python (prefer wheels, no source build)..." -ForegroundColor Yellow
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        # huggingface_hub is small and has wheels; install separately from llama-cpp
+        & $bundledPy -m pip install --no-warn-script-location --prefer-binary -q "huggingface_hub>=0.23.0" 2>&1 |
+            ForEach-Object { Write-Host "  $_" }
+
+        # Prefer prebuilt wheel only — source builds need scikit-build-core/cmake and often fail on CI
+        & $bundledPy -m pip install --no-warn-script-location --only-binary=:all: -q "llama-cpp-python>=0.3.0" 2>&1 |
+            ForEach-Object { Write-Host "  $_" }
+        $llamaOk = ($LASTEXITCODE -eq 0)
+
+        if (-not $llamaOk) {
+            Write-Host "[Python] No binary wheel — trying with build backends..." -ForegroundColor Yellow
+            & $bundledPy -m pip install --no-warn-script-location -q scikit-build-core cmake ninja setuptools wheel 2>&1 |
+                ForEach-Object { Write-Host "  $_" }
+            & $bundledPy -m pip install --no-warn-script-location --prefer-binary -q "llama-cpp-python>=0.3.0" 2>&1 |
+                ForEach-Object { Write-Host "  $_" }
+            $llamaOk = ($LASTEXITCODE -eq 0)
+        }
+
+        if ($llamaOk) {
+            Write-Host "[Python] llama-cpp-python ready" -ForegroundColor Green
+        } else {
+            Write-Host "[Python] WARNING: llama-cpp-python not bundled — first translate may pip-install it" -ForegroundColor Yellow
+        }
+    } catch {
+        Write-Host "[Python] WARNING: llama-cpp-python install skipped: $_" -ForegroundColor Yellow
+    } finally {
+        $ErrorActionPreference = $prevEap
     }
 }
 
@@ -184,3 +209,4 @@ Write-Host "  1. Run: windeployqt $BuildDir\Etemenanki.exe"
 Write-Host "  2. Compile: installer\EtemenankiSetup.iss (Inno Setup 6)"
 Write-Host "  3. Upload: installer\dist\EtemenankiSetup-*.exe to GitHub Releases"
 Write-Host ""
+exit 0

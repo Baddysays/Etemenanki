@@ -70,10 +70,19 @@ jobs:
       - name: Prepare release bundle (Python + embedded model)
         shell: pwsh
         run: |
-          ./scripts/prepare_release.ps1 -BuildDir "build/Release"
-          $gguf = Get-ChildItem -Path "build/Release/engines/llm/models" -Filter "*.gguf" -ErrorAction SilentlyContinue | Select-Object -First 1
-          if (-not $gguf) { throw "Embedded model missing after prepare_release — installer would be incomplete" }
+          $ErrorActionPreference = "Continue"
+          & ./scripts/prepare_release.ps1 -BuildDir "build/Release"
+          $prepCode = $LASTEXITCODE
+          $gguf = Get-ChildItem -Path "build/Release/engines/llm/models" -Filter "*.gguf" -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+          if (-not $gguf) {
+            throw "Embedded model missing after prepare_release (exit $prepCode) — installer would be incomplete"
+          }
           Write-Host "Model ready: $($gguf.Name) ($([math]::Round($gguf.Length / 1GB, 2)) GB)"
+          # Model is required; llama-cpp-python is best-effort (wheels may be missing on CI)
+          if ($prepCode -ne 0) {
+            Write-Host "WARNING: prepare_release exit=$prepCode but model is present — continuing"
+          }
 
       - name: Deploy Qt runtime (windeployqt)
         run: |
