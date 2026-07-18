@@ -90,12 +90,23 @@ jobs:
           if (-not (Test-Path $windeployqt)) { throw "windeployqt not found: $windeployqt" }
           $prev = $ErrorActionPreference
           $ErrorActionPreference = "Continue"
-          & $windeployqt "build/Release/Etemenanki.exe" --qmldir "qml_cpp" 2>&1 | ForEach-Object { Write-Host $_ }
+          & $windeployqt "build/Release/Etemenanki.exe" --qmldir "qml_cpp" --no-translations 2>&1 | ForEach-Object { Write-Host $_ }
           $ErrorActionPreference = $prev
+          # Drop debug QML tooling plugins if present
+          Remove-Item -Recurse -Force "build/Release/qmltooling" -ErrorAction SilentlyContinue
+          Get-ChildItem "build/Release" -Recurse -Directory -Filter "__pycache__" -ErrorAction SilentlyContinue |
+            Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
 
-      - name: Portable ZIP
+      - name: Portable ZIP (app only, no GGUF — stays under 2 GiB)
         run: |
-          Compress-Archive -Path "build/Release/*" -DestinationPath "etemenanki-portable.zip" -Force
+          $stage = Join-Path $env:RUNNER_TEMP "ete-portable"
+          if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item "build/Release/*" $stage -Recurse -Force
+          Get-ChildItem $stage -Recurse -Filter "*.gguf" -ErrorAction SilentlyContinue | Remove-Item -Force
+          Compress-Archive -Path "$stage\*" -DestinationPath "etemenanki-portable.zip" -Force
+          $z = Get-Item "etemenanki-portable.zip"
+          Write-Host "Portable ZIP: $([math]::Round($z.Length / 1MB, 1)) MiB (model not included — use full installer)"
 
       - name: Install Inno Setup
         run: choco install innosetup -y
@@ -116,11 +127,10 @@ jobs:
           Copy-Item $built.FullName "etemenanki-setup.exe" -Force
           $sizeGb = [math]::Round($built.Length / 1GB, 2)
           Write-Host "Installer: $setupName ($sizeGb GiB)"
-          if ($built.Length -gt 2GB) {
-            throw "Installer exceeds GitHub 2 GiB asset limit ($sizeGb GiB)"
+          $limit = 2GB - 32MB  # leave headroom under GitHub hard limit
+          if ($built.Length -gt $limit) {
+            throw "Installer too large for GitHub Releases: $sizeGb GiB (limit ~1.97 GiB). Use a smaller GGUF quant."
           }
-          # Softprops/action-gh-release globs are unreliable for multi-GB assets;
-          # publish via gh CLI instead.
 
       - name: Write update.json for this release
         env:

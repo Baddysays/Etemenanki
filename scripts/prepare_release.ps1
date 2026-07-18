@@ -199,6 +199,23 @@ if ((Test-Path $bundledPy) -and -not $SkipPython) {
     }
 }
 
+# --- Slim build tree (GitHub 2 GiB installer limit) ---
+Write-Host "[Cleanup] Removing caches and unused Qt translations..." -ForegroundColor Yellow
+Get-ChildItem -Path $BuildPath -Recurse -Directory -Filter "__pycache__" -ErrorAction SilentlyContinue |
+    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+Get-ChildItem -Path $BuildPath -Recurse -Include "*.pyc","*.pyo","*.pdb" -File -ErrorAction SilentlyContinue |
+    Remove-Item -Force -ErrorAction SilentlyContinue
+$trDir = Join-Path $BuildPath "translations"
+if (Test-Path $trDir) {
+    Get-ChildItem $trDir -File -ErrorAction SilentlyContinue | Where-Object {
+        $_.Name -notmatch '^(qt|qtbase)_(ru|en)\.qm$'
+    } | Remove-Item -Force -ErrorAction SilentlyContinue
+}
+$qmlTooling = Join-Path $BuildPath "qmltooling"
+if (Test-Path $qmlTooling) {
+    Remove-Item $qmlTooling -Recurse -Force -ErrorAction SilentlyContinue
+}
+
 # --- Summary ---
 Write-Host ""
 Write-Host "=== Preparation Complete ===" -ForegroundColor Cyan

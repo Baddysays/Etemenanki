@@ -714,7 +714,7 @@ void SetupManager::runSetup(const QStringList& ollamaModels,
                 if (m_appSettings) {
                     m_appSettings->refreshAvailableModels();
                     if (installEmbeddedModel)
-                        m_appSettings->setSelectedLocalModel(QStringLiteral("translategemma-4b-it-q3"));
+                        m_appSettings->setSelectedLocalModel(QStringLiteral("translategemma-4b-it-q2"));
                     else if (!ollamaModels.isEmpty())
                         m_appSettings->setSelectedLocalModel(ollamaModels.first());
                 }

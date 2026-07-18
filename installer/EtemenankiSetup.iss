@@ -6,8 +6,9 @@
 ;   3. windeployqt build\Release\Etemenanki.exe
 ;   4. Compile this ISS with Inno Setup 6
 ;
-; Result: single .exe installer (~2.0–2.1 GB) with TranslateGemma 4B included.
+; Result: single .exe installer (~1.9 GiB) with TranslateGemma 4B (Q2_K) included.
 ; User installs in 2 clicks — no post-install model download needed.
+; Must stay under GitHub Releases 2 GiB asset limit.
 
 #define MyAppName "Etemenanki"
 #define MyAppVersion "1.0.5"
@@ -31,9 +32,9 @@ OutputBaseFilename=EtemenankiSetup-{#MyAppVersion}
 SetupIconFile=..\assets\branding\app.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 WizardStyle=modern
-Compression=lzma2
+Compression=lzma2/ultra64
 SolidCompression=yes
-ArchitecturesInstallIn64BitMode=x64
+ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=admin
 DisableProgramGroupPage=yes
 SetupLogging=yes
@@ -50,15 +51,24 @@ Name: "install_pdf2zh"; Description: "Скачать pdf2zh (PDF с вёрстк
 Source: "{#BuildDir}\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#BuildDir}\*.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#BuildDir}\assets\*"; DestDir: "{app}\assets"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "{#BuildDir}\tools\*"; DestDir: "{app}\tools"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "{#BuildDir}\engines\*"; DestDir: "{app}\engines"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#BuildDir}\tools\*"; DestDir: "{app}\tools"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "__pycache__\*,*.pyc,*.pyo"
+Source: "{#BuildDir}\engines\*"; DestDir: "{app}\engines"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "__pycache__\*,*.pyc,*.pyo,*.pdb,*.dist-info\RECORD"
 Source: "{#BuildDir}\releases\*"; DestDir: "{app}\releases"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#BuildDir}\qt*"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#BuildDir}\Etemenanki\*"; DestDir: "{app}\Etemenanki"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist; Excludes: "*.pdb"
 Source: "{#BuildDir}\qml\*"; DestDir: "{app}\qml"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
 Source: "{#BuildDir}\platforms\*"; DestDir: "{app}\platforms"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
 Source: "{#BuildDir}\imageformats\*"; DestDir: "{app}\imageformats"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
-Source: "{#BuildDir}\translations\*"; DestDir: "{app}\translations"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
+; Only RU/EN Qt translations — full translations\ is tens of MB and unused
+Source: "{#BuildDir}\translations\qt_ru.qm"; DestDir: "{app}\translations"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#BuildDir}\translations\qt_en.qm"; DestDir: "{app}\translations"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#BuildDir}\translations\qtbase_ru.qm"; DestDir: "{app}\translations"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#BuildDir}\translations\qtbase_en.qm"; DestDir: "{app}\translations"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#BuildDir}\generic\*"; DestDir: "{app}\generic"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
+Source: "{#BuildDir}\networkinformation\*"; DestDir: "{app}\networkinformation"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
+Source: "{#BuildDir}\tls\*"; DestDir: "{app}\tls"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
+Source: "{#BuildDir}\styles\*"; DestDir: "{app}\styles"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
+Source: "{#BuildDir}\iconengines\*"; DestDir: "{app}\iconengines"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"

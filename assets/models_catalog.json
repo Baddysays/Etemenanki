@@ -19,7 +19,7 @@
   },
   "models": [
     {
-      "id": "translategemma-4b-it-q3",
+      "id": "translategemma-4b-it-q2",
       "provider": "embedded",
       "tier": "light",
       "translation_quality": 5,

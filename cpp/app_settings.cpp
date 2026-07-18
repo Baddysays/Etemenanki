@@ -94,7 +94,7 @@ QString defaultEmbeddedModelId()
                 return id;
         }
     }
-    return QStringLiteral("translategemma-4b-it-q3");
+    return QStringLiteral("translategemma-4b-it-q2");
 }
 
 QStringList embeddedCatalogIds(const QJsonArray& catalog)

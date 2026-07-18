@@ -1,17 +1,17 @@
 {
-  "default_model_id": "translategemma-4b-it-q3",
+  "default_model_id": "translategemma-4b-it-q2",
   "server_host": "127.0.0.1",
   "server_port": 11435,
   "models": [
     {
-      "id": "translategemma-4b-it-q3",
-      "filename": "translategemma-4b-it.Q3_K_S.gguf",
+      "id": "translategemma-4b-it-q2",
+      "filename": "translategemma-4b-it.Q2_K.gguf",
       "repo_id": "aoiandroid/translategemma-4b-it-GGUF",
-      "repo_file": "translategemma-4b-it.Q3_K_S.gguf",
+      "repo_file": "translategemma-4b-it.Q2_K.gguf",
       "n_ctx": 4096,
       "n_gpu_layers": -1,
-      "size_mb": 1850,
-      "notes": "Q3_K_S keeps the full installer under GitHub Releases 2 GiB limit; still TranslateGemma 4B."
+      "size_mb": 1650,
+      "notes": "Q2_K (~1.61 GiB) keeps EtemenankiSetup under GitHub Releases 2 GiB limit."
     }
   ]
 }
